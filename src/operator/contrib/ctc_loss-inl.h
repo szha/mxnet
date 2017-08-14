@@ -41,6 +41,10 @@
 #include "../sequence_op_common.h"
 #include "../mshadow_op.h"
 
+#if defined(__CUDACC__) && MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+#include "../nn/softmax-inl.h"
+#endif
+
 namespace mxnet {
 namespace op {
 
@@ -188,7 +192,21 @@ struct CTCLossParam : public dmlc::Parameter<CTCLossParam> {
 template <typename xpu>
 class CTCLossOp : public Operator {
  public:
-  explicit CTCLossOp(CTCLossParam p) { this->param_ = p; }
+  explicit CTCLossOp(CTCLossParam p) {
+    this->param_ = p;
+#if defined(__CUDACC__) && MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+    CUDNN_CALL(cudnnCreateCTCLossDescriptor(&ctc_desc_));
+    CUDNN_CALL(cudnnSetCTCLossDescriptor(ctc_desc_, CUDNN_DATA_FLOAT));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&prob_desc_));
+    CUDNN_CALL(cudnnCreateTensorDescriptor(&grad_desc_));
+  }
+
+  ~CTCLossOp() {
+    CUDNN_CALL(cudnnDestroyCTCLossDescriptor(ctc_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(prob_desc_));
+    CUDNN_CALL(cudnnDestroyTensorDescriptor(grad_desc_));
+#endif
+  }
 
   virtual void Forward(const OpContext &ctx, const std::vector<TBlob> &in_data,
                        const std::vector<OpReqType> &req,
@@ -233,21 +251,21 @@ class CTCLossOp : public Operator {
                                 &packed_labels, &label_lengths);
     }
 
-    // allocate temporary workspace
-    size_t size_bytes;
-    bool gpu = data.kDevCPU ? false : true;
-    get_workspace_size<real_t>(&label_lengths, &input_lengths, alphabet_size,
-                               batch_size, gpu, &size_bytes);
-
-    // round-up so there are enough elems in memory
-    int num_tmp_elems = (size_bytes + sizeof(real_t) - 1) / sizeof(real_t);
-    Tensor<xpu, 1, real_t> workspace =
-        ctx.requested[ctc_loss::kTempSpace].get_space_typed<xpu, 1, real_t>(
-            Shape1(num_tmp_elems), s);
-
-    compute_ctc_cost(data, costs.dptr_, grad.dptr_, packed_labels.data(),
-                     label_lengths.data(), input_lengths.data(),
-                     workspace.dptr_, ctx.is_train);
+#if defined(__CUDACC__) && MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+    if (!param_.use_input_lengths) {
+      cudnn_forward(ctx, s, data, costs, grad,
+                    &input_lengths, &label_lengths, &packed_labels,
+                    max_seq_len, batch_size, alphabet_size);
+    } else {
+      baidu_forward(ctx, s, data, costs, grad,
+                    &input_lengths, &label_lengths, &packed_labels,
+                    batch_size, alphabet_size);
+    }
+#else
+    baidu_forward(ctx, s, data, costs, grad,
+                  &input_lengths, &label_lengths, &packed_labels,
+                  batch_size, alphabet_size);
+#endif  // __CUDACC__ && CUDNN
   }
 
   virtual void Backward(const OpContext &ctx,
@@ -270,12 +288,138 @@ class CTCLossOp : public Operator {
     Tensor<xpu, 3, real_t> data_grad_computed =
         out_data[ctc_loss::kGrad].get<xpu, 3, real_t>(s);
 
-    Assign(data_grad, req[ctc_loss::kData],
-           broadcast<1>(output_grad, data_grad.shape_) * data_grad_computed);
+#if defined(__CUDACC__) && MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+    if (!param_.use_input_lengths) {
+      cudnn_backward_extra(s, data_grad, output_grad, data_grad_computed);
+    } else {
+      baidu_backward_extra(req, data_grad, output_grad, data_grad_computed);
+    }
+#else
+    baidu_backward_extra(req, data_grad, output_grad, data_grad_computed);
+#endif
   }
 
  private:
   CTCLossParam param_;
+
+#if defined(__CUDACC__) && MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+  cudnnDataType_t dtype_;
+  cudnnCTCLossDescriptor_t ctc_desc_;
+  cudnnTensorDescriptor_t prob_desc_, grad_desc_;
+
+  inline virtual void cudnn_forward(const OpContext &ctx,
+                                    mshadow::Stream<xpu>* s,
+                                    mshadow::Tensor<xpu, 3, real_t> data,
+                                    mshadow::Tensor<xpu, 1, real_t> costs,
+                                    mshadow::Tensor<xpu, 3, real_t> grad,
+                                    std::vector<int>* input_lengths,
+                                    std::vector<int>* label_lengths,
+                                    std::vector<int>* packed_labels,
+                                    int max_seq_len,
+                                    int batch_size,
+                                    int alphabet_size) {
+    using namespace mshadow;
+    // since the input is activation before softmax and cudnn ctc takes softmax
+    // apply softmax to inputs first.
+    Tensor<xpu, 3, real_t> prob(data.shape_);
+    mshadow::AllocSpace(&prob);
+    prob.set_stream(s);
+    mxnet_op::Softmax<mxnet_op::softmax_fwd>(s, data.dptr_, prob.dptr_, data.shape_, 2);
+
+    // call cudnn to calculate ctc loss
+    dtype_ = CUDNN_DATA_FLOAT;
+    int dims[3], strides[3];
+    size_t workspace_bytes;
+    int workspace_size;
+    dims[0] = max_seq_len;
+    dims[1] = batch_size;
+    dims[2] = alphabet_size;
+    strides[0] = batch_size*alphabet_size;
+    strides[1] = alphabet_size;
+    strides[2] = 1;
+    cudnnCTCLossAlgo_t ctc_algo = CUDNN_CTC_LOSS_ALGO_DETERMINISTIC;
+    CUDNN_CALL(cudnnSetTensorNdDescriptor(prob_desc_,
+                                          dtype_,
+                                          3,
+                                          dims,
+                                          strides));
+    CUDNN_CALL(cudnnSetTensorNdDescriptor(grad_desc_,
+                                          dtype_,
+                                          3,
+                                          dims,
+                                          strides));
+    CUDNN_CALL(cudnnGetCTCLossWorkspaceSize(s->dnn_handle_,
+                                            prob_desc_,
+                                            grad_desc_,
+                                            packed_labels->data(),
+                                            label_lengths->data(),
+                                            input_lengths->data(),
+                                            ctc_algo,
+                                            ctc_desc_,
+                                            &workspace_bytes));
+    workspace_size = workspace_bytes/sizeof(real_t);
+    Tensor<gpu, 1, real_t> temp_space =
+      ctx.requested[ctc_loss::kTempSpace].get_space_typed<gpu, 1, real_t>(
+                              mshadow::Shape1(workspace_size), s);
+    CUDNN_CALL(cudnnCTCLoss(s->dnn_handle_,
+                            prob_desc_,
+                            prob.dptr_,
+                            packed_labels->data(),
+                            label_lengths->data(),
+                            input_lengths->data(),
+                            costs.dptr_,
+                            grad_desc_,
+                            grad.dptr_,
+                            ctc_algo,
+                            ctc_desc_,
+                            temp_space.dptr_,
+                            workspace_bytes));
+    mshadow::FreeSpace(&prob);
+  }
+  inline virtual void cudnn_backward_extra(mshadow::Stream<xpu>* s,
+                                           mshadow::Tensor<xpu, 3, real_t> data_grad,
+                                           mshadow::Tensor<xpu, 1, real_t> output_grad,
+                                           mshadow::Tensor<xpu, 3, real_t> data_grad_computed) {
+    mxnet_op::SoftmaxGrad<mshadow::op::mul, mxnet_op::softmax_bwd>(s,
+        output_grad.dptr_, data_grad_computed.dptr_, data_grad.dptr_, data_grad.shape_, 2);
+  }
+#endif  // __CUDACC__ && CUDNN
+
+  inline virtual void baidu_forward(const OpContext &ctx,
+                                    mshadow::Stream<xpu>* s,
+                                    mshadow::Tensor<xpu, 3, real_t> data,
+                                    mshadow::Tensor<xpu, 1, real_t> costs,
+                                    mshadow::Tensor<xpu, 3, real_t> grad,
+                                    std::vector<int>* input_lengths,
+                                    std::vector<int>* label_lengths,
+                                    std::vector<int>* packed_labels,
+                                    int batch_size,
+                                    int alphabet_size) {
+    using namespace mshadow;
+    // allocate temporary workspace
+    size_t size_bytes;
+    bool gpu = data.kDevCPU ? false : true;
+    get_workspace_size<real_t>(label_lengths, input_lengths, alphabet_size,
+                               batch_size, gpu, &size_bytes);
+
+    // round-up so there are enough elems in memory
+    int num_tmp_elems = (size_bytes + sizeof(real_t) - 1) / sizeof(real_t);
+    Tensor<xpu, 1, real_t> workspace =
+        ctx.requested[ctc_loss::kTempSpace].get_space_typed<xpu, 1, real_t>(
+            Shape1(num_tmp_elems), s);
+
+    compute_ctc_cost(data, costs.dptr_, grad.dptr_, packed_labels->data(),
+                     label_lengths->data(), input_lengths->data(),
+                     workspace.dptr_, ctx.is_train);
+  }
+
+  inline virtual void baidu_backward_extra(const std::vector<OpReqType> &req,
+                                           mshadow::Tensor<xpu, 3, real_t> data_grad,
+                                           mshadow::Tensor<xpu, 1, real_t> output_grad,
+                                           mshadow::Tensor<xpu, 3, real_t> data_grad_computed) {
+    Assign(data_grad, req[ctc_loss::kData],
+           mshadow::expr::broadcast<1>(output_grad, data_grad.shape_) * data_grad_computed);
+  }
 };  // class CTCLossOp
 
 template <typename xpu>
@@ -304,8 +448,7 @@ class CTCLossProp : public OperatorProperty {
     return {"output", "grad"};
   }
 
-  void Init(
-      const std::vector<std::pair<std::string, std::string>> &kwargs) override {
+  void Init(const std::vector<std::pair<std::string, std::string>> &kwargs) override {
     param_.Init(kwargs);
   }
 
