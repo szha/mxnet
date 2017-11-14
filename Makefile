@@ -102,9 +102,7 @@ else
 endif
 
 ifeq ($(USE_OPENMP), 1)
-	ifneq ($(UNAME_S), Darwin)
-		CFLAGS += -fopenmp
-	endif
+	CFLAGS += -fopenmp
 endif
 
 ifeq ($(USE_NNPACK), 1)

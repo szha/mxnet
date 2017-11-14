@@ -28,19 +28,19 @@ export NVCC = nvcc
 DEV = 0
 
 # whether compile with debug
-DEBUG = 0
+DEBUG = 1
 
 # whether compile with profiler
-USE_PROFILER =
+USE_PROFILER = 0
 
 # whether to turn on signal handler (e.g. segfault logger)
-USE_SIGNAL_HANDLER =
+USE_SIGNAL_HANDLER = 1
 
 # the additional link flags you want to add
-ADD_LDFLAGS =
+ADD_LDFLAGS += -L/usr/local/opt/llvm/lib
 
 # the additional compile flags you want to add
-ADD_CFLAGS =
+ADD_CFLAGS += -I/usr/local/opt/llvm/include
 
 #---------------------------------------------
 # matrix computation libraries for CPU/GPU
@@ -60,7 +60,7 @@ USE_CUDNN = 0
 # whether use opencv during compilation
 # you can disable it, however, you will not able to use
 # imbin iterator
-USE_OPENCV = 1
+USE_OPENCV = 0
 
 #whether use libjpeg-turbo for image decode without OpenCV wrapper
 USE_LIBJPEG_TURBO = 0
@@ -154,10 +154,10 @@ LIBJVM=$(JAVA_HOME)/jre/lib/amd64/server
 USE_S3 = 0
 
 # Use gperftools if found
-USE_GPERFTOOLS = 1
+USE_GPERFTOOLS = 0
 
 # Use JEMalloc if found, and not using gperftools
-USE_JEMALLOC = 1
+USE_JEMALLOC = 0
 
 #----------------------------
 # additional operators
