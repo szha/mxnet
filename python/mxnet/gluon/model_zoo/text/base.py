@@ -49,11 +49,18 @@ class _StepwiseSeq2SeqModel(gluon.Block):
         encoded, state = self.encoder(embedded_inputs, begin_state)
         out = self.decoder(encoded)
         return out, state
+    
+    
+def _apply_weight_drop_to_rnn_cell(block, rate, weight_drop_mode = 'training'):
+    params = block.collect_params('h2h_weight')
+    weight_dropped_params = WeightDropParameter(params['h2h_weight'], rate, mode)
+    block.collect_params('h2h_weight').params['h2h_weight'] = weight_dropped_params
+    
+    
 
 def get_rnn_cell(mode, num_layers, num_hidden,
                  dropout, weight_dropout,
-                 var_drop_in, var_drop_state, var_drop_out):
-    # TODO weight drop
+                 var_drop_in, var_drop_state, var_drop_out, weight_dropout_mode = 'training'):
     rnn_cell = rnn.SequentialRNNCell()
     with rnn_cell.name_scope():
         for i in range(num_layers):
@@ -74,22 +81,44 @@ def get_rnn_cell(mode, num_layers, num_hidden,
             rnn_cell.add(cell)
             if i != num_layers - 1 and dropout != 0:
                 rnn_cell.add(rnn.DropoutCell(dropout))
+            
+            if weight_dropout:
+                _apply_weight_drop_to_rnn_cell(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
+    
     return rnn_cell
 
-def get_rnn_layer(mode, num_layers, num_embed, num_hidden, dropout, weight_dropout):
-    # TODO weight drop
+
+def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training'):
+    params = block.collect_params('.*_h2h_weight')
+
+    for key, value in params.items():
+        weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
+        block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
+        for child_block in block._children:
+            child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
+            
+        block._unfused.params._params.clear()
+        for _unfused_child_block in block._unfused:
+            _unfused_child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
+
+def get_rnn_layer(mode, num_layers, num_embed, num_hidden, dropout, weight_dropout, weight_dropout_mode = 'training'):
     if mode == 'rnn_relu':
-        return rnn.RNN(num_hidden, 'relu', num_layers, dropout=dropout,
+        block = rnn.RNN(num_hidden, 'relu', num_layers, dropout=dropout,
                        input_size=num_embed)
     elif mode == 'rnn_tanh':
-        return rnn.RNN(num_hidden, num_layers, dropout=dropout,
+        block = rnn.RNN(num_hidden, num_layers, dropout=dropout,
                        input_size=num_embed)
     elif mode == 'lstm':
-        return rnn.LSTM(num_hidden, num_layers, dropout=dropout,
+        block = rnn.LSTM(num_hidden, num_layers, dropout=dropout,
                         input_size=num_embed)
     elif mode == 'gru':
-        return rnn.GRU(num_hidden, num_layers, dropout=dropout,
+        block = rnn.GRU(num_hidden, num_layers, dropout=dropout,
                        input_size=num_embed)
+    if weight_dropout:
+        _apply_weight_drop_to_rnn_layer(block, weight_dropout, weight_dropout_mode = weight_dropout_mode)
+    
+    return block
+    
 
 class RNNCellLayer(gluon.Block):
     """A block that takes an rnn cell and makes it act like rnn layer."""
