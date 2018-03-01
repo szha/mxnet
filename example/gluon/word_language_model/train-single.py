@@ -67,6 +67,8 @@ parser.add_argument('--eval_only', action='store_true',
                     help='Whether to only evaluate the trained model')
 parser.add_argument('--num_gpus', type=int, default=0,
                     help='number of gpus')
+parser.add_argument('--gpu', type=int, default=2,
+                    help='which gpu')
 args = parser.parse_args()
 
 
@@ -76,7 +78,10 @@ args = parser.parse_args()
 
 
 if args.num_gpus > 0:
-    context = [mx.gpu(i) for i in range(args.num_gpus)]
+    if args.gpu == 2:
+        context = [mx.gpu(args.gpu)]
+    else:
+        context = [mx.gpu(i) for i in range(args.num_gpus)]
 else:
     context = [mx.cpu(0)]
 
