@@ -67,7 +67,7 @@ parser.add_argument('--eval_only', action='store_true',
                     help='Whether to only evaluate the trained model')
 parser.add_argument('--num_gpus', type=int, default=0,
                     help='number of gpus')
-parser.add_argument('--gpu', type=int, default=2,
+parser.add_argument('--gpu', type=int, default=0,
                     help='which gpu')
 args = parser.parse_args()
 
@@ -76,9 +76,10 @@ args = parser.parse_args()
 # Load data
 ###############################################################################
 
+print(args)
 
 if args.num_gpus > 0:
-    if args.gpu == 2:
+    if args.num_gpus == 1:
         context = [mx.gpu(args.gpu)]
     else:
         context = [mx.gpu(i) for i in range(args.num_gpus)]
@@ -224,13 +225,14 @@ def train():
             test_L = eval(test_data)
             model.collect_params().save(args.save)
             print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
-        else:
-            args.lr = args.lr*0.25
-            trainer._init_optimizer('sgd',
-                                    {'learning_rate': args.lr,
-                                     'momentum': 0,
-                                     'wd': 0})
-            model.collect_params().load(args.save, context)
+            #handle Out of range value for lr when iteration is large
+#         else:
+#             args.lr = args.lr*0.25
+#             trainer._init_optimizer('sgd',
+#                                     {'learning_rate': args.lr,
+#                                      'momentum': 0,
+#                                      'wd': 0})
+#             model.collect_params().load(args.save, context)
             
     print('Total training throughput %.2f samples/s'%(
                             (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
