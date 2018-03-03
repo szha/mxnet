@@ -67,6 +67,8 @@ parser.add_argument('--eval_only', action='store_true',
                     help='Whether to only evaluate the trained model')
 parser.add_argument('--num_gpus', type=int, default=0,
                     help='number of gpus')
+parser.add_argument('--test_single', action='store_true',
+                    help='test only single')
 args = parser.parse_args()
 
 
@@ -76,7 +78,7 @@ args = parser.parse_args()
 
 
 if args.num_gpus > 0:
-    if args.num_gpus == 1 and args.eval_only:
+    if args.num_gpus == 1 and args.eval_only and args.test_single:
         context = mx.gpu(0)
     else:
         context = [mx.gpu(i) for i in range(args.num_gpus)]
@@ -170,9 +172,9 @@ def eval(data_source):
     for i, (data, target) in enumerate(data_source):
         data = data.T
         target= target.T
-        data_list = gluon.utils.split_and_load(data, context, even_split=False)
-        target_list = gluon.utils.split_and_load(target, context, even_split=False)
-        hiddens = [detach(hidden) for hidden in hiddens]
+        data_list = gluon.utils.split_and_load(data, context)
+        target_list = gluon.utils.split_and_load(target, context)
+#         hiddens = [detach(hidden) for hidden in hiddens]
         Ls = []
         for i, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
             output, h = model(X, h)
@@ -258,10 +260,17 @@ if __name__ == '__main__':
         print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
         print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
         print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
-    else:
+    elif args.num_gpus == 1 and args.eval_only and args.test_single:
         model.collect_params().load(args.save, context)
         val_L = evalsinglegpu(val_data)
         test_L = evalsinglegpu(test_data)
+        print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
+        print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
+        print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
+    else:
+        model.collect_params().load(args.save, context)
+        val_L = eval(val_data)
+        test_L = eval(test_data)
         print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
         print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
         print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
