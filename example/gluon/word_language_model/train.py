@@ -149,19 +149,15 @@ def detach(hidden):
 def eval(data_source):
     total_L = 0.0
     ntotal = 0
-    hiddens = [model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=ctx) for ctx in context]
+    hidden = model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=context[0])
     for i, (data, target) in enumerate(data_source):
         data = data.T
         target= target.T
-        data_list = gluon.utils.split_and_load(data, context, even_split=False)
-        target_list = gluon.utils.split_and_load(target, context, even_split=False)
-        hiddens = [detach(hidden) for hidden in hiddens]
-        Ls = []
-        for X, y, h in zip(data_list, target_list, hiddens):
-            output, h = model(X, h)
-            Ls.append(loss(mx.nd.reshape(output, (-3, -1)), mx.nd.reshape(y, (-1,))))
-        total_L += sum([mx.nd.sum(L).asscalar() for L in Ls])
-        ntotal += sum([L.size for L in Ls])
+        output, hidden = model(data, hidden)
+        L = loss(mx.nd.reshape(output, (-3, -1)),
+                 mx.nd.reshape(target, (-1,)))
+        total_L += mx.nd.sum(L).asscalar()
+        ntotal += L.size
     return total_L / ntotal
 
 def train():
