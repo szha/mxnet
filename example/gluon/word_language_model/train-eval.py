@@ -76,7 +76,10 @@ args = parser.parse_args()
 
 
 if args.num_gpus > 0:
-    context = [mx.gpu(i) for i in range(args.num_gpus)]
+    if args.num_gpus == 1 and args.eval_only:
+        context = mx.gpu(0)
+    else
+        context = [mx.gpu(i) for i in range(args.num_gpus)]
 else:
     context = [mx.cpu(0)]
 
@@ -145,6 +148,20 @@ def detach(hidden):
     else:
         hidden = hidden.detach()
     return hidden
+
+def evalsinglegpu(data_source):
+    total_L = 0.0
+    ntotal = 0
+    hidden = model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=context)
+    for i, (data, target) in enumerate(data_source):
+        data = data.as_in_context(context).T
+        target = target.as_in_context(context).T
+        output, hidden = model(data, hidden)
+        L = loss(mx.nd.reshape(output, (-3, -1)),
+                 mx.nd.reshape(target, (-1,)))
+        total_L += mx.nd.sum(L).asscalar()
+        ntotal += L.size
+    return total_L / ntotal
 
 def eval(data_source):
     total_L = 0.0
@@ -235,9 +252,16 @@ if __name__ == '__main__':
     start_pipeline_time = time.time()
     if not args.eval_only:
         train()
-    model.collect_params().load(args.save, context)
-    val_L = eval(val_data)
-    test_L = eval(test_data)
-    print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
-    print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
-    print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
+        model.collect_params().load(args.save, context)
+        val_L = eval(val_data)
+        test_L = eval(test_data)
+        print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
+        print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
+        print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
+    else:
+        model.collect_params().load(args.save, context)
+        val_L = evalsinglegpu(val_data)
+        test_L = evalsinglegpu(test_data)
+        print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
+        print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
+        print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
