@@ -261,13 +261,15 @@ if __name__ == '__main__':
         print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
         print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
     elif args.num_gpus == 1 and args.eval_only and args.test_single:
+        print('args.num_gpus == 1 and args.eval_only and args.test_single')
         model.collect_params().load(args.save, context)
         val_L = evalsinglegpu(val_data)
         test_L = evalsinglegpu(test_data)
         print('Best validation loss %.2f, test ppl %.2f'%(val_L, math.exp(val_L)))
         print('Best test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
         print('Total time cost %.2fs'%(time.time()-start_pipeline_time))
-    else:
+    elif args.eval_only and not args.test_single:
+        print('args.eval_only and not args.test_single')
         model.collect_params().load(args.save, context)
         val_L = eval(val_data)
         test_L = eval(test_data)
