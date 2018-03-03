@@ -219,13 +219,6 @@ def train():
             test_L = eval(test_data)
             model.collect_params().save(args.save)
             print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
-        else:
-            args.lr = args.lr*0.25
-            trainer._init_optimizer('sgd',
-                                    {'learning_rate': args.lr,
-                                     'momentum': 0,
-                                     'wd': 0})
-            model.collect_params().load(args.save, context)
             
     print('Total training throughput %.2f samples/s'%(
                             (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
