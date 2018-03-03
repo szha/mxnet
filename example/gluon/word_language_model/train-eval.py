@@ -174,7 +174,6 @@ def eval(data_source):
         target= target.T
         data_list = gluon.utils.split_and_load(data, context)
         target_list = gluon.utils.split_and_load(target, context)
-#         hiddens = [detach(hidden) for hidden in hiddens]
         Ls = []
         for i, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
             output, h = model(X, h)
