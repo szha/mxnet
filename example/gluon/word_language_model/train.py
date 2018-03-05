@@ -149,8 +149,6 @@ def detach(hidden):
 def eval(data_source):
     total_L = 0.0
     ntotal = 0
-    print("eval:")
-    print(context[0])
     hidden = model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=context[0])
     for i, (data, target) in enumerate(data_source):
         data = data.as_in_context(context[0]).T
@@ -188,14 +186,14 @@ def train():
                 grads = [p.grad(ctx) for p in model.collect_params().values()]
                 gluon.utils.clip_global_norm(grads, args.clip * args.bptt * args.batch_size)
             
-            trainer.step(args.batch_size * len(context))
+            trainer.step(args.batch_size)
                 
             total_L += sum([mx.nd.sum(L).asscalar() for L in Ls])
             
             if i % args.log_interval == 0 and i > 0:
                 cur_L = total_L / args.bptt / args.batch_size / args.log_interval
-#                 print('[Epoch %d Batch %d] loss %.2f, ppl %.2f'%(
-#                     epoch, i, cur_L, math.exp(cur_L)))
+                print('[Epoch %d Batch %d] loss %.2f, ppl %.2f'%(
+                    epoch, i, cur_L, math.exp(cur_L)))
                 total_L = 0.0
             
             print('[Epoch %d Batch %d] throughput %.2f samples/s'%(
