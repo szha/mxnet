@@ -184,10 +184,7 @@ def train():
                 grads = [p.grad(ctx) for p in model.collect_params().values()]
                 gluon.utils.clip_global_norm(grads, args.clip * args.bptt * args.batch_size)
             
-            if args.num_gpus == 0:
-                trainer.step(args.batch_size)
-            else:
-                trainer.step(args.batch_size * args.num_gpus)
+            trainer.step(args.batch_size * len(context))
                 
             total_L += sum([mx.nd.sum(L).asscalar() for L in Ls])
             
