@@ -74,11 +74,11 @@ args = parser.parse_args()
 # Load data
 ###############################################################################
 
+print("args:")
+print(args)
 
 context = [mx.cpu()] if args.gpus is None or args.gpus == "" else [
         mx.gpu(int(i)) for i in args.gpus.split(',')]
-print("context:")
-print(context)
 
 train_dataset = contrib.data.text.WikiText2('./data', 'train', seq_len=args.bptt)
 vocab = train_dataset.vocabulary
