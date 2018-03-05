@@ -77,6 +77,7 @@ args = parser.parse_args()
 
 context = [mx.cpu()] if args.gpus is None or args.gpus == "" else [
         mx.gpu(int(i)) for i in args.gpus.split(',')]
+print("context:")
 print(context)
 
 train_dataset = contrib.data.text.WikiText2('./data', 'train', seq_len=args.bptt)
@@ -148,11 +149,12 @@ def detach(hidden):
 def eval(data_source):
     total_L = 0.0
     ntotal = 0
+    print("eval:")
     print(context[0])
     hidden = model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=context[0])
     for i, (data, target) in enumerate(data_source):
-        data = data.T
-        target= target.T
+        data = data.as_in_context(context[0]).T
+        target= target.as_in_context(context[0]).T
         output, hidden = model(data, hidden)
         L = loss(mx.nd.reshape(output, (-3, -1)),
                  mx.nd.reshape(target, (-1,)))
