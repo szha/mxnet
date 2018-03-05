@@ -65,8 +65,8 @@ parser.add_argument('--gcthreshold', type=float, default=0.5,
                     help='threshold for 2bit gradient compression')
 parser.add_argument('--eval_only', action='store_true',
                     help='Whether to only evaluate the trained model')
-parser.add_argument('--num_gpus', type=int, default=0,
-                    help='number of gpus')
+parser.add_argument('--gpus', type=str, 
+                    help='list of gpus to run, e.g. 0 or 0,2,5. empty means using cpu')
 args = parser.parse_args()
 
 
@@ -75,10 +75,8 @@ args = parser.parse_args()
 ###############################################################################
 
 
-if args.num_gpus > 0:
-    context = [mx.gpu(i) for i in range(args.num_gpus)]
-else:
-    context = [mx.cpu(0)]
+context = [mx.cpu()] if args.gpus is None or args.gpus == "" else [
+        mx.gpu(int(i)) for i in args.gpus.split(',')]
 
 train_dataset = contrib.data.text.WikiText2('./data', 'train', seq_len=args.bptt)
 vocab = train_dataset.vocabulary
@@ -149,19 +147,15 @@ def detach(hidden):
 def eval(data_source):
     total_L = 0.0
     ntotal = 0
-    hiddens = [model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=ctx) for ctx in context]
+    hidden = model.begin_state(func=mx.nd.zeros, batch_size=args.batch_size, ctx=context[0])
     for i, (data, target) in enumerate(data_source):
         data = data.T
         target= target.T
-        data_list = gluon.utils.split_and_load(data, context, even_split=False)
-        target_list = gluon.utils.split_and_load(target, context, even_split=False)
-        hiddens = [detach(hidden) for hidden in hiddens]
-        Ls = []
-        for X, y, h in zip(data_list, target_list, hiddens):
-            output, h = model(X, h)
-            Ls.append(loss(mx.nd.reshape(output, (-3, -1)), mx.nd.reshape(y, (-1,))))
-        total_L += sum([mx.nd.sum(L).asscalar() for L in Ls])
-        ntotal += sum([L.size for L in Ls])
+        output, hidden = model(data, hidden)
+        L = loss(mx.nd.reshape(output, (-3, -1)),
+                 mx.nd.reshape(target, (-1,)))
+        total_L += mx.nd.sum(L).asscalar()
+        ntotal += L.size
     return total_L / ntotal
 
 def train():
@@ -219,13 +213,6 @@ def train():
             test_L = eval(test_data)
             model.collect_params().save(args.save)
             print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
-        else:
-            args.lr = args.lr*0.25
-            trainer._init_optimizer('sgd',
-                                    {'learning_rate': args.lr,
-                                     'momentum': 0,
-                                     'wd': 0})
-            model.collect_params().load(args.save, context)
             
     print('Total training throughput %.2f samples/s'%(
                             (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
