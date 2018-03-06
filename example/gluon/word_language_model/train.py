@@ -66,16 +66,13 @@ parser.add_argument('--gcthreshold', type=float, default=0.5,
 parser.add_argument('--eval_only', action='store_true',
                     help='Whether to only evaluate the trained model')
 parser.add_argument('--gpus', type=str, 
-                    help='list of gpus to run, e.g. 0 or 0,2,5. empty means using cpu')
+                    help='list of gpus to run, e.g. 0 or 0,2,5. empty means using cpu. (the result of multi-gpu training might be slightly different compared to single-gpu training, still need to be finalized)')
 args = parser.parse_args()
 
 
 ###############################################################################
 # Load data
 ###############################################################################
-
-print("args:")
-print(args)
 
 context = [mx.cpu()] if args.gpus is None or args.gpus == "" else [
         mx.gpu(int(i)) for i in args.gpus.split(',')]
