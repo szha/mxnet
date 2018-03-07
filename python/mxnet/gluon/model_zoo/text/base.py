@@ -52,15 +52,9 @@ class _StepwiseSeq2SeqModel(gluon.Block):
     
     
 def _apply_weight_drop_to_rnn_cell(block, rate, weight_dropout_mode = 'training'):
-    print("performing weight drop rnn cell")
     params = block.collect_params('.*_h2h_weight')
-
     for key, value in params.items():
-        print("value:")
-        print(value)
         weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
-        print("weight_dropped_params:")
-        print(weight_dropped_params)
         block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
         for child_block in block._children:
             child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
@@ -68,7 +62,6 @@ def _apply_weight_drop_to_rnn_cell(block, rate, weight_dropout_mode = 'training'
 def get_rnn_cell(mode, num_layers, num_embed, num_hidden, 
                  dropout, weight_dropout,
                  var_drop_in, var_drop_state, var_drop_out, weight_dropout_mode = 'training'):
-    print("get_rnn_cell")
     rnn_cell = rnn.SequentialRNNCell()
     with rnn_cell.name_scope():
         for i in range(num_layers):
@@ -91,26 +84,18 @@ def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
                 rnn_cell.add(rnn.DropoutCell(dropout))
             
             if weight_dropout:
-                print("weight_dropout")
                 _apply_weight_drop_to_rnn_cell(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
     
     return rnn_cell
 
 
 def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training'):
-    print("performing weight drop")
     params = block.collect_params('.*_h2h_weight')
-
     for key, value in params.items():
-        print("value:")
-        print(value)
         weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
-        print("weight_dropped_params:")
-        print(weight_dropped_params)
         block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
         for child_block in block._children:
-            child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
-            
+            child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params      
         block._unfused.params._params.clear()
         for _unfused_child_block in block._unfused:
             _unfused_child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
