@@ -51,7 +51,7 @@ class _StepwiseSeq2SeqModel(gluon.Block):
         return out, state
     
     
-def _apply_weight_drop_to_rnn_cell(block, rate, weight_drop_mode = 'training'):
+def _apply_weight_drop_to_rnn_cell(block, rate, weight_dropout_mode = 'training'):
     print("performing weight drop rnn cell")
     params = block.collect_params('.*_h2h_weight')
 
