@@ -114,7 +114,6 @@ test_data = gluon.data.DataLoader(test_dataset,
 ntokens = len(vocab)
 
 if args.weight_dropout:
-    print("args.weight_dropout")
     model = AWDLSTM(args.model, vocab, args.emsize, args.nhid, args.nlayers,
                  args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
                  args.tied)
@@ -190,29 +189,29 @@ def train():
             
             if i % args.log_interval == 0 and i > 0:
                 cur_L = total_L / args.bptt / args.batch_size / args.log_interval
-#                 print('[Epoch %d Batch %d] loss %.2f, ppl %.2f'%(
-#                     epoch, i, cur_L, math.exp(cur_L)))
+                print('[Epoch %d Batch %d] loss %.2f, ppl %.2f'%(
+                    epoch, i, cur_L, math.exp(cur_L)))
                 total_L = 0.0
             
-#             print('[Epoch %d Batch %d] throughput %.2f samples/s'%(
-#                     epoch, i, args.batch_size / (time.time() - start_batch_time)))
+            print('[Epoch %d Batch %d] throughput %.2f samples/s'%(
+                    epoch, i, args.batch_size / (time.time() - start_batch_time)))
         
         mx.nd.waitall()
 
-#         print('[Epoch %d] throughput %.2f samples/s'%(
-#                     epoch, (args.batch_size * nbatch_train) / (time.time() - start_epoch_time)))
+        print('[Epoch %d] throughput %.2f samples/s'%(
+                    epoch, (args.batch_size * nbatch_train) / (time.time() - start_epoch_time)))
         val_L = eval(val_data)
-#         print('[Epoch %d] time cost %.2fs, valid loss %.2f, valid ppl %.2f'%(
-#             epoch, time.time()-start_epoch_time, val_L, math.exp(val_L)))
+        print('[Epoch %d] time cost %.2fs, valid loss %.2f, valid ppl %.2f'%(
+            epoch, time.time()-start_epoch_time, val_L, math.exp(val_L)))
 
         if val_L < best_val:
             best_val = val_L
             test_L = eval(test_data)
             model.collect_params().save(args.save)
-#             print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
+            print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
             
-#     print('Total training throughput %.2f samples/s'%(
-#                             (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
+    print('Total training throughput %.2f samples/s'%(
+                            (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
 
 if __name__ == '__main__':
     start_pipeline_time = time.time()
