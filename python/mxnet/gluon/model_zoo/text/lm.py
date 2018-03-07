@@ -51,6 +51,7 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         encoder = ExtendedSequential()
         with encoder.name_scope():
             for l in range(self._num_layers):
+                print("encoder.add(get_rnn_cell")
 #                 encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
 #                                           self._hidden_dim, self._hidden_dim if
 #                                           l != self._num_layers - 1 or not self._tie_weights

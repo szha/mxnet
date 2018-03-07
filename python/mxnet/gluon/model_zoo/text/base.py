@@ -82,12 +82,14 @@ def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
                 rnn_cell.add(rnn.DropoutCell(dropout))
             
             if weight_dropout:
+                print("_apply_weight_drop_to_rnn_layer")
                 _apply_weight_drop_to_rnn_layer(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
     
     return rnn_cell
 
 
 def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training'):
+    print("performing weight drop")
     params = block.collect_params('.*_h2h_weight')
 
     for key, value in params.items():

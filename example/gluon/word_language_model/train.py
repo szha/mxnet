@@ -114,6 +114,7 @@ test_data = gluon.data.DataLoader(test_dataset,
 ntokens = len(vocab)
 
 if args.weight_dropout:
+    print("args.weight_dropout")
     model = AWDLSTM(args.model, vocab, args.emsize, args.nhid, args.nlayers,
                  args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
                  args.tied)
