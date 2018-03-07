@@ -34,7 +34,6 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         self._drop_e = drop_e
         self._weight_drop = weight_drop
         self._tie_weights = tie_weights
-        print("AWDLSTM+__init__")
         super(AWDLSTM, self).__init__(vocab, vocab, **kwargs)
 
     def _get_embedding(self):
@@ -49,18 +48,13 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         return embedding
 
     def _get_encoder(self):
-        print("_get_encoder(self)")
         encoder = ExtendedSequential()
         with encoder.name_scope():
             for l in range(self._num_layers):
-#                 encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
-#                                           self._hidden_dim, self._hidden_dim if
-#                                           l != self._num_layers - 1 or not self._tie_weights
-#                                           else self._embed_dim, 0, self._weight_drop))
-                encoder.add(get_rnn_cell(self._mode, 1, self._embed_dim if l == 0 else
+                encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
                                           self._hidden_dim, self._hidden_dim if
                                           l != self._num_layers - 1 or not self._tie_weights
-                                          else self._embed_dim, self._dropout, self._weight_drop, 0, 0, 0))
+                                          else self._embed_dim, 0, self._weight_drop))
                 if self._drop_h:
                     pass # TODO variational drop
         return encoder
@@ -74,7 +68,6 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         return output
 
     def begin_state(self, *args, **kwargs):
-        print("def begin_state(self, *args, **kwargs):")
         return self.encoder[0].begin_state(*args, **kwargs)
 
 class RNNModel(_StepwiseSeq2SeqModel):
