@@ -194,8 +194,8 @@ def train():
 #                     epoch, i, cur_L, math.exp(cur_L)))
                 total_L = 0.0
             
-            print('[Epoch %d Batch %d] throughput %.2f samples/s'%(
-                    epoch, i, args.batch_size / (time.time() - start_batch_time)))
+#             print('[Epoch %d Batch %d] throughput %.2f samples/s'%(
+#                     epoch, i, args.batch_size / (time.time() - start_batch_time)))
         
         mx.nd.waitall()
 
