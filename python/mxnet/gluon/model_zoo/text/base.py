@@ -60,6 +60,7 @@ def _apply_weight_drop_to_rnn_cell(block, rate, weight_drop_mode = 'training'):
 def get_rnn_cell(mode, num_layers, num_embed, num_hidden, 
                  dropout, weight_dropout,
                  var_drop_in, var_drop_state, var_drop_out, weight_dropout_mode = 'training'):
+    print("get_rnn_cell")
     rnn_cell = rnn.SequentialRNNCell()
     with rnn_cell.name_scope():
         for i in range(num_layers):
@@ -82,7 +83,7 @@ def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
                 rnn_cell.add(rnn.DropoutCell(dropout))
             
             if weight_dropout:
-                print("_apply_weight_drop_to_rnn_layer")
+                print("weight_dropout")
                 _apply_weight_drop_to_rnn_layer(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
     
     return rnn_cell

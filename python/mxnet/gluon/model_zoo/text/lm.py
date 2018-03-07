@@ -48,10 +48,10 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         return embedding
 
     def _get_encoder(self):
+        print("_get_encoder(self)")
         encoder = ExtendedSequential()
         with encoder.name_scope():
             for l in range(self._num_layers):
-                print("encoder.add(get_rnn_cell")
 #                 encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
 #                                           self._hidden_dim, self._hidden_dim if
 #                                           l != self._num_layers - 1 or not self._tie_weights
@@ -73,6 +73,7 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         return output
 
     def begin_state(self, *args, **kwargs):
+        print("def begin_state(self, *args, **kwargs):")
         return self.encoder[0].begin_state(*args, **kwargs)
 
 class RNNModel(_StepwiseSeq2SeqModel):
