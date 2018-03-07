@@ -52,26 +52,25 @@ class _StepwiseSeq2SeqModel(gluon.Block):
     
     
 def _apply_weight_drop_to_rnn_cell(block, rate, weight_drop_mode = 'training'):
-    params = block.collect_params('h2h_weight')
-    weight_dropped_params = WeightDropParameter(params['h2h_weight'], rate, mode)
-    block.collect_params('h2h_weight')._params['h2h_weight'] = weight_dropped_params
-    
-    
+    params = block.collect_params('.*h2h_weight')
+    for key, value in params.items():
+        weight_dropped_params = WeightDropParameter(value, rate, mode)
+        block.collect_params('.*h2h_weight')._params[key] = weight_dropped_params
 
-def get_rnn_cell(mode, num_layers, num_hidden,
+def get_rnn_cell(mode, num_layers, num_embed, num_hidden, 
                  dropout, weight_dropout,
                  var_drop_in, var_drop_state, var_drop_out, weight_dropout_mode = 'training'):
     rnn_cell = rnn.SequentialRNNCell()
     with rnn_cell.name_scope():
         for i in range(num_layers):
             if mode == 'rnn_relu':
-                cell = rnn.RNNCell(num_hidden, 'relu')
+                cell = rnn.RNNCell(num_hidden, 'relu', input_size=num_embed)
             elif mode == 'rnn_tanh':
-                cell = rnn.RNNCell(num_hidden, 'tanh')
+                cell = rnn.RNNCell(num_hidden, 'tanh', input_size=num_embed)
             elif mode == 'lstm':
-                cell = rnn.LSTMCell(num_hidden)
+                cell = rnn.LSTMCell(num_hidden, input_size=num_embed)
             elif mode == 'gru':
-                cell = rnn.GRUCell(num_hidden)
+                cell = rnn.GRUCell(num_hidden, input_size=num_embed)
             if var_drop_in + var_drop_state + var_drop_out != 0:
                 cell = contrib.rnn.VariationalDropoutCell(cell,
                                                           var_drop_in,
@@ -83,7 +82,7 @@ def get_rnn_cell(mode, num_layers, num_hidden,
                 rnn_cell.add(rnn.DropoutCell(dropout))
             
             if weight_dropout:
-                _apply_weight_drop_to_rnn_cell(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
+                _apply_weight_drop_to_rnn_layer(rnn_cell, rate = weight_dropout, weight_dropout_mode = weight_dropout_mode)
     
     return rnn_cell
 
@@ -92,7 +91,11 @@ def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training
     params = block.collect_params('.*_h2h_weight')
 
     for key, value in params.items():
+        print("value:")
+        print(value)
         weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
+        print("weight_dropped_params:")
+        print(weight_dropped_params)
         block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
         for child_block in block._children:
             child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params

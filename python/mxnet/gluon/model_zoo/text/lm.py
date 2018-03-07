@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from .base import _StepwiseSeq2SeqModel, get_rnn_layer, ExtendedSequential
+from .base import _StepwiseSeq2SeqModel, get_rnn_layer, get_rnn_cell, ExtendedSequential
 from ... import nn
 from .... import init
 
@@ -51,10 +51,14 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         encoder = ExtendedSequential()
         with encoder.name_scope():
             for l in range(self._num_layers):
-                encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
+#                 encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
+#                                           self._hidden_dim, self._hidden_dim if
+#                                           l != self._num_layers - 1 or not self._tie_weights
+#                                           else self._embed_dim, 0, self._weight_drop))
+                encoder.add(get_rnn_cell(self._mode, 1, self._embed_dim if l == 0 else
                                           self._hidden_dim, self._hidden_dim if
                                           l != self._num_layers - 1 or not self._tie_weights
-                                          else self._embed_dim, 0, self._weight_drop))
+                                          else self._embed_dim, self._dropout, self._weight_drop, 0, 0, 0))
                 if self._drop_h:
                     pass # TODO variational drop
         return encoder
@@ -99,6 +103,7 @@ class RNNModel(_StepwiseSeq2SeqModel):
                                           self._hidden_dim, self._hidden_dim if
                                           l != self._num_layers - 1 or not self._tie_weights
                                           else self._embed_dim, 0, 0))
+    
         return encoder
 
     def _get_decoder(self):
