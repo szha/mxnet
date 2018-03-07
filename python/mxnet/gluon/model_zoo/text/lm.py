@@ -34,6 +34,7 @@ class AWDLSTM(_StepwiseSeq2SeqModel):
         self._drop_e = drop_e
         self._weight_drop = weight_drop
         self._tie_weights = tie_weights
+        print("AWDLSTM+__init__")
         super(AWDLSTM, self).__init__(vocab, vocab, **kwargs)
 
     def _get_embedding(self):
