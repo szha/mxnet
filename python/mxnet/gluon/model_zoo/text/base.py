@@ -101,7 +101,7 @@ def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training
         all_params.update(_apply_weight_drop_to_rnn_layer(child_block, rate, weight_dropout_mode))
 
     params = block._params._params
-    for key, value in params:
+    for key, value in params.items():
         if key[-11:] == '_h2h_weight':
             if key in all_params:
                 params[key] = all_params[key] # use children's updated parameter
