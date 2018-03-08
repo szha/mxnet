@@ -90,16 +90,28 @@ def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
 
 
 def _apply_weight_drop_to_rnn_layer(block, rate, weight_dropout_mode = 'training'):
-    params = block.collect_params('.*_h2h_weight')
-    for key, value in params.items():
-        weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
-        params._params[key] = weight_dropped_params
+#     params = block.collect_params('.*_h2h_weight')
+#     for key, value in params.items():
+#         weight_dropped_params = WeightDropParameter(value, rate, weight_dropout_mode)
+#         params._params[key] = weight_dropped_params
+#     for child_block in block._children:
+#         _apply_weight_drop_to_rnn_layer(child_block, rate, weight_dropout_mode)
+    all_params = {}
     for child_block in block._children:
-        _apply_weight_drop_to_rnn_layer(child_block, rate, weight_dropout_mode)
-#         child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params      
-#     block._unfused.params._params.clear()
-#     for _unfused_child_block in block._unfused:
-#         _unfused_child_block.collect_params('.*_h2h_weight')._params[key] = weight_dropped_params
+        all_params.update(_apply_weight_drop_to_rnn_layer(child_block, rate, weight_dropout_mode))
+
+    params = block._params._params
+    for key, value in params:
+        if key[-11:] == '_h2h_weight':
+            if key in all_params:
+                params[key] = all_params[key] # use children's updated parameter
+            else:
+                weight_dropped_param = WeightDropParameter(value, rate, weight_dropout_mode)
+                params[key] = weight_dropped_param
+                all_params[key] = params[key]
+
+    return all_params
+
 
 
 def get_rnn_layer(mode, num_layers, num_embed, num_hidden, dropout, weight_dropout, weight_dropout_mode = 'training'):
