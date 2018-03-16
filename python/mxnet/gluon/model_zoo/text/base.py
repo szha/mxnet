@@ -19,11 +19,11 @@ from ... import Block, HybridBlock, Parameter, contrib, nn, rnn
 from .... import nd
 
 
-class _Seq2SeqModel(Block):
-    def __init__(self, in_vocab, out_vocab, **kwargs):
-        super(_Seq2SeqModel, self).__init__(**kwargs)
-        self._in_vocab = in_vocab
-        self._out_vocab = out_vocab
+class _TextSeq2SeqModel(Block):
+    def __init__(self, src_vocab, tgt_vocab, **kwargs):
+        super(_TextSeq2SeqModel, self).__init__(**kwargs)
+        self._src_vocab = src_vocab
+        self._tgt_vocab = tgt_vocab
 
     def begin_state(self, *args, **kwargs):
         return self.encoder.begin_state(*args, **kwargs)
