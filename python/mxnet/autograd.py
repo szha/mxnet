@@ -32,6 +32,10 @@ from .ndarray import _GRAD_REQ_MAP
 from .symbol import Symbol
 
 
+def set_dbatch(is_dbatch):
+    check_call(_LIB.MXDBatchSetIsDBatch(
+        ctypes.c_int(is_dbatch)))
+
 def set_recording(is_recording): #pylint: disable=redefined-outer-name
     """Set status to recording/not recording. When recording, graph will be constructed
     for gradient computation.
@@ -100,17 +104,20 @@ class _RecordingStateScope(object):
             backward([y])
 
     """
-    def __init__(self, is_record, train_mode): #pylint: disable=redefined-outer-name
+    def __init__(self, is_record, train_mode, dbatch_mode=False): #pylint: disable=redefined-outer-name
         self._enter_is_record = is_record
         self._enter_train_mode = train_mode
         self._prev_is_record = None
         self._prev_train_mode = None
+        self._dbatch_mode = dbatch_mode
 
     def __enter__(self):
         if self._enter_is_record is not None:
             self._prev_is_record = set_recording(self._enter_is_record)
         if self._enter_train_mode is not None:
             self._prev_train_mode = set_training(self._enter_train_mode)
+        if self._dbatch_mode is not None:
+            set_dbatch(self._dbatch_mode)
 
     def __exit__(self, ptype, value, trace):
         if self._enter_is_record is not None and self._prev_is_record != self._enter_is_record:
@@ -119,7 +126,7 @@ class _RecordingStateScope(object):
             set_training(self._prev_train_mode)
 
 
-def record(train_mode=True): #pylint: disable=redefined-outer-name
+def record(train_mode=True, dbatch_mode=False): #pylint: disable=redefined-outer-name
     """Returns an autograd recording scope context to be used in 'with' statement
     and captures code that needs gradients to be calculated.
 
@@ -140,7 +147,7 @@ def record(train_mode=True): #pylint: disable=redefined-outer-name
         Whether the forward pass is in training or predicting mode. This controls the behavior
         of some layers such as Dropout, BatchNorm.
     """
-    return _RecordingStateScope(True, train_mode)
+    return _RecordingStateScope(True, train_mode, dbatch_mode)
 
 
 def pause(train_mode=False): #pylint: disable=redefined-outer-name

@@ -24,13 +24,20 @@ namespace mxnet {
 #if DMLC_CXX11_THREAD_LOCAL
 thread_local bool Imperative::is_train_ = false;
 thread_local bool Imperative::is_recording_ = false;
+thread_local bool DBatchEngine::is_dbatch_ = false;
 #else
 MX_THREAD_LOCAL bool Imperative::is_train_ = false;
 MX_THREAD_LOCAL bool Imperative::is_recording_ = false;
+MX_THREAD_LOCAL bool DBatchEngine::is_dbatch_ = false;
 #endif
 
 Imperative* Imperative::Get() {
   static Imperative inst;
+  return &inst;
+}
+
+DBatchEngine* DBatchEngine::Get() {
+  static DBatchEngine inst;
   return &inst;
 }
 
@@ -105,6 +112,13 @@ OpStatePtr Imperative::Invoke(
   SetShapeType(ctx, attrs, inputs, outputs, &dispatch_mode);
   std::vector<OpReqType> req;
   SetWriteInplaceReq(inputs, outputs, &req);
+
+  if (DBatchEngine::Get()->is_dbatch()) {
+    // skip forward execution
+    // (TODO) save array information
+    LOG(INFO) << "skip forward execution";
+    return OpStatePtr();
+  }
 
   return InvokeOp(ctx, attrs, inputs, outputs, req, dispatch_mode);
 }
