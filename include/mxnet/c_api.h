@@ -720,6 +720,7 @@ MXNET_DLL int MXAutogradSetIsRecording(int is_recording, int* prev);
  * \param prev returns the previous status before this set.
  * \return 0 when success, -1 when failure happens
  */
+MXNET_DLL int MXDBatchSetIsDBatch(int is_dbatch);
 MXNET_DLL int MXAutogradSetIsTraining(int is_training, int* prev);
 /*!
  * \brief get whether autograd recording is on

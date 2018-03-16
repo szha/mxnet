@@ -255,6 +255,12 @@ int MXAutogradIsTraining(bool* curr) {
   API_END();
 }
 
+int MXDBatchSetIsDBatch(int is_dbatch) {
+  API_BEGIN();
+  DBatchEngine::Get()->set_is_dbatch(static_cast<bool>(is_dbatch));
+  API_END();
+}
+
 int MXAutogradSetIsTraining(int is_training, int* prev) {
   API_BEGIN();
   *prev = Imperative::Get()->set_is_training(static_cast<bool>(is_training));
@@ -318,6 +324,20 @@ int MXAutogradBackwardEx(mx_uint num_output,
                          int **grad_stypes) {
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
+  LOG(INFO) << "output address: " << reinterpret_cast<uint64_t>(output_handles[0]);
+  // (TODO) if output_handles is in dbatch
+  if (true) {
+    NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
+    nnvm::Symbol sym = head->get_autograd_symbol();
+    nnvm::Graph g;
+    g.outputs = sym.outputs;
+    DBatchEngine::Get()->SaveGraph(g);
+    if (DBatchEngine::Get()->Graphs().size() == 5) {
+      // execute and write result back
+      DBatchEngine::Get()->Batch();
+      DBatchEngine::Get()->Fresh();
+    }
+  }
 
   std::vector<NDArray*> outputs, ograds, variables;
   outputs.reserve(num_output);
