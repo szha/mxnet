@@ -339,40 +339,40 @@ int MXAutogradBackwardEx(mx_uint num_output,
     }
   }
 
-  std::vector<NDArray*> outputs, ograds, variables;
-  outputs.reserve(num_output);
-  for (mx_uint i = 0; i < num_output; ++i) {
-    outputs.emplace_back(reinterpret_cast<NDArray*>(output_handles[i]));
-  }
+  // std::vector<NDArray*> outputs, ograds, variables;
+  // outputs.reserve(num_output);
+  // for (mx_uint i = 0; i < num_output; ++i) {
+  //   outputs.emplace_back(reinterpret_cast<NDArray*>(output_handles[i]));
+  // }
 
-  ograds.reserve(num_output);
-  for (mx_uint i = 0; i < num_output; ++i) {
-    if (ograd_handles != nullptr) {
-      ograds.emplace_back(reinterpret_cast<NDArray*>(ograd_handles[i]));
-    } else {
-      ograds.emplace_back(nullptr);
-    }
-  }
+  // ograds.reserve(num_output);
+  // for (mx_uint i = 0; i < num_output; ++i) {
+  //   if (ograd_handles != nullptr) {
+  //     ograds.emplace_back(reinterpret_cast<NDArray*>(ograd_handles[i]));
+  //   } else {
+  //     ograds.emplace_back(nullptr);
+  //   }
+  // }
 
-  variables.reserve(num_variables);
-  for (mx_uint i = 0; i < num_variables; ++i) {
-    variables.emplace_back(reinterpret_cast<NDArray*>(var_handles[i]));
-  }
+  // variables.reserve(num_variables);
+  // for (mx_uint i = 0; i < num_variables; ++i) {
+  //   variables.emplace_back(reinterpret_cast<NDArray*>(var_handles[i]));
+  // }
 
-  auto grads = Imperative::Get()->Backward(outputs, ograds, variables, is_train,
-                                                  retain_graph, create_graph);
-  if (num_variables != 0) {
-    ret->ret_handles.clear();
-    ret->out_types.clear();
-    ret->ret_handles.reserve(grads.size());
-    ret->out_types.reserve(grads.size());
-    for (const auto& i : grads) {
-      ret->ret_handles.push_back(i);
-      ret->out_types.push_back(i->storage_type());
-    }
-    *grad_handles = dmlc::BeginPtr(ret->ret_handles);
-    *grad_stypes = dmlc::BeginPtr(ret->out_types);
-  }
+  // auto grads = Imperative::Get()->Backward(outputs, ograds, variables, is_train,
+  //                                                 retain_graph, create_graph);
+  // if (num_variables != 0) {
+  //   ret->ret_handles.clear();
+  //   ret->out_types.clear();
+  //   ret->ret_handles.reserve(grads.size());
+  //   ret->out_types.reserve(grads.size());
+  //   for (const auto& i : grads) {
+  //     ret->ret_handles.push_back(i);
+  //     ret->out_types.push_back(i->storage_type());
+  //   }
+  //   *grad_handles = dmlc::BeginPtr(ret->ret_handles);
+  //   *grad_stypes = dmlc::BeginPtr(ret->out_types);
+  // }
   API_END();
 }
 
