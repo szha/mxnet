@@ -124,6 +124,7 @@ class _RecordingStateScope(object):
             set_recording(self._prev_is_record)
         if self._enter_train_mode is not None and self._prev_train_mode != self._enter_train_mode:
             set_training(self._prev_train_mode)
+        set_dbatch(False)
 
 
 def record(train_mode=True, dbatch_mode=False): #pylint: disable=redefined-outer-name
