@@ -18,6 +18,7 @@
  */
 #include <unordered_set>
 #include <iostream>
+#include <mxnet/batching.h>
 #include "./imperative_utils.h"
 
 namespace mxnet {

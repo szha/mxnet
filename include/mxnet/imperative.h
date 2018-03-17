@@ -23,6 +23,7 @@
 #include <mxnet/op_attr_types.h>
 #include <mxnet/graph_attr_types.h>
 #include <mxnet/c_api.h>
+#include <mxnet/batching.h>
 #include <nnvm/symbolic.h>
 #include <nnvm/op.h>
 #include <nnvm/graph.h>
@@ -51,44 +52,6 @@ struct CachedOpParam : public dmlc::Parameter<CachedOpParam> {
     .set_default(dmlc::GetEnv("MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN", 15))
     .describe("Segment size of bulk execution during backward pass.");
   }
-};
-
-class DBatchEngine {
- public:
-  void SaveGraph(nnvm::Graph& g) {
-    graphs_.push_back(g);
-  }
-
-  const std::vector<nnvm::Graph>& Graphs() const {
-    return graphs_;
-  }
-
-  void Batch() {
-    // (TODO szha) batch and execution
-    LOG(INFO) << "batching, graphs size=" << graphs_.size();
-  }
-
-  void Fresh() {
-    graphs_.clear();
-  }
-
-  bool is_dbatch() const {
-    return is_dbatch_;
-  }
-
-  bool set_is_dbatch(bool is_dbatch) {
-    is_dbatch_ = is_dbatch;
-    return is_dbatch_;
-  }
-
-  static DBatchEngine* Get();
- private:
-#if DMLC_CXX11_THREAD_LOCAL
-  static thread_local bool is_dbatch_;
-#else
-  static MX_THREAD_LOCAL bool is_dbatch_;
-#endif
-  std::vector<nnvm::Graph> graphs_;
 };
 
 /*! \brief runtime functions for NDArray */
