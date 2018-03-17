@@ -79,6 +79,14 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   }
 
   // generate new graph
+  // create empty mapping from old node to new node
+  // for each step
+    // for each op
+      // update inputs according to node mapping
+      // concat inputs and bookkeep lengths
+      // create op with concat inputs
+      // slice according to lengths to get new node
+      // record mapping from old node to new node
   // (TODO szha)
 
   return nnvm::Graph();
