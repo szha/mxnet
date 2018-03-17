@@ -47,7 +47,8 @@ class DBatchEngine {
   void Batch() {
     // (TODO szha) batch and execution
     LOG(INFO) << "batching, graphs size=" << graphs_.size();
-
+    nnvm::Graph g = BatchGraphs(graphs_);
+    ExecuteGraph(g);
   }
 
   void Fresh() {
@@ -64,6 +65,7 @@ class DBatchEngine {
   }
 
   static DBatchEngine* Get();
+
  private:
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local bool is_dbatch_;
@@ -71,12 +73,11 @@ class DBatchEngine {
   static MX_THREAD_LOCAL bool is_dbatch_;
 #endif
   std::vector<nnvm::Graph> graphs_;
+
+  nnvm::Graph BatchGraphs(std::vector<nnvm::Graph>& graphs);
+  void ExecuteGraph(nnvm::Graph& graph);
 };
 
-nnvm::Graph BatchGraphs(std::vector<nnvm::Graph>& graphs) {
-
-}
-
-}
+}  // namespace mxnet
 
 #endif

@@ -23,7 +23,6 @@
 #include <mxnet/op_attr_types.h>
 #include <mxnet/graph_attr_types.h>
 #include <mxnet/c_api.h>
-#include <mxnet/batching.h>
 #include <nnvm/symbolic.h>
 #include <nnvm/op.h>
 #include <nnvm/graph.h>

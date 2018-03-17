@@ -41,11 +41,12 @@ for e in range(epochs):
         label = label.as_in_context(model_ctx)
         with autograd.record(dbatch_mode=True):
             output = net(data)
-            loss = square_loss(output, label)
-        loss.backward()
+            # loss = square_loss(output, label)
+        # loss.backward()
+	output.backward()
 	if (i+1) == 5:
 	    raise ValueError
             trainer.step(batch_size)
-        cumulative_loss += nd.mean(loss).asscalar()
+        # cumulative_loss += nd.mean(loss).asscalar()
     print("Epoch %s, loss: %s" % (e, cumulative_loss / num_examples))
     loss_sequence.append(cumulative_loss)

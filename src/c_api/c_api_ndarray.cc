@@ -330,6 +330,8 @@ int MXAutogradBackwardEx(mx_uint num_output,
   if (true) {
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
+    // LOG(INFO) << "Graph: ";
+    // sym.Print(std::cout);
     nnvm::Graph g;
     g.outputs = sym.outputs;
     DBatchEngine::Get()->SaveGraph(g);
