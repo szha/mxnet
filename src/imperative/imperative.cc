@@ -25,20 +25,13 @@ namespace mxnet {
 #if DMLC_CXX11_THREAD_LOCAL
 thread_local bool Imperative::is_train_ = false;
 thread_local bool Imperative::is_recording_ = false;
-thread_local bool DBatchEngine::is_dbatch_ = false;
 #else
 MX_THREAD_LOCAL bool Imperative::is_train_ = false;
 MX_THREAD_LOCAL bool Imperative::is_recording_ = false;
-MX_THREAD_LOCAL bool DBatchEngine::is_dbatch_ = false;
 #endif
 
 Imperative* Imperative::Get() {
   static Imperative inst;
-  return &inst;
-}
-
-DBatchEngine* DBatchEngine::Get() {
-  static DBatchEngine inst;
   return &inst;
 }
 
