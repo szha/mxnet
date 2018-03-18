@@ -83,6 +83,7 @@ class DBatchEngine {
   std::vector<nnvm::Graph> graphs_;
   nnvm::NodeEntryMap<NDArray> entry_arr_;
 
+
   nnvm::Graph BatchGraphs(std::vector<nnvm::Graph>& graphs);
   void ExecuteGraph(nnvm::Graph& graph);
 };
