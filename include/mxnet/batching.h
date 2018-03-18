@@ -87,7 +87,9 @@ class DBatchEngine {
   nnvm::Graph BatchGraphs(const std::vector<nnvm::Graph>& graphs);
   void ExecuteGraph(const nnvm::Graph& graph);
 };
-nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry, std::unordered_map<nnvm::Node*, nnvm::NodePtr> node_map);
+nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry,
+                               std::unordered_map<nnvm::Node*,
+                                                  std::vector<nnvm::NodePtr>> node_map);
 
 }  // namespace mxnet
 

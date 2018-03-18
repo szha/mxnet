@@ -80,7 +80,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
 
   // generate new graph
   // create mapping from old node to new node
-  std::unordered_map<nnvm::Node*, nnvm::NodePtr> old_new_node_map;
+  std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
   for (const std::unordered_map<int64_t, std::vector<nnvm::NodePtr>> step : forward_steps) {
     for (const std::pair<int64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
       int64_t op_sign = step_ops.first;
@@ -147,21 +147,21 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
           };
           nnvm::NodeEntry slice_node = MakeNode("slice", batch_node.node.get()->attrs.name,
                                                 slice_input, slice_args);
-          old_new_node_map[op_ptrs[j].get()] = slice_node.node; // ???
+          old_new_node_map[op_ptrs[j].get()].emplace_back(slice_node.node);
         }
       }
-
-      // TODO record mapping from old node to new node
-
     }
   }
 
   return nnvm::Graph();
 }
 
-nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry, std::unordered_map<nnvm::Node*, nnvm::NodePtr> node_map) {
-  // TODO
-  return nnvm::NodeEntry();
+nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry,
+                               std::unordered_map<nnvm::Node*,
+                                                  std::vector<nnvm::NodePtr>> node_map) {
+  nnvm::Node* node_ptr = entry.node.get();
+  nnvm::NodePtr result_node = node_map[node_ptr][entry.index];
+  return nnvm::NodeEntry{result_node, 0, entry.version+1};
 }
 
 void DBatchEngine::ExecuteGraph(const nnvm::Graph& graph) {
