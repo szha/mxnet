@@ -43,6 +43,19 @@ int64_t ComputeNodeSign(const nnvm::NodePtr& n) {
   return reinterpret_cast<int64_t>(n->op());
 }
 
+nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry,
+                               std::unordered_map<nnvm::Node*,
+                                                  std::vector<nnvm::NodePtr>> node_map) {
+  nnvm::Node* node_ptr = entry.node.get();
+  if (node_map.find(node_ptr) == node_map.end()) {
+    return entry;
+  }
+  std::vector<nnvm::NodePtr> new_nodes = node_map[node_ptr];
+  nnvm::NodePtr result_node;
+  result_node = new_nodes[entry.index < new_nodes.size() ? entry.index : 0]; // possibly non-batchable multi-out node
+  return nnvm::NodeEntry{result_node, 0, entry.version+1};
+}
+
 nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // collect depth
   int max_depth = 0;
@@ -85,7 +98,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
     const std::unordered_map<int64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
     for (const std::pair<int64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
       int64_t op_sign = step_ops.first;
-      const std::vector<nnvm::NodePtr> op_ptrs = step_ops.second;
+      const std::vector<nnvm::NodePtr>& op_ptrs = step_ops.second;
       size_t num_nodes = op_ptrs.size();
       nnvm::Node* first_op_node = op_ptrs.front().get();
       if (num_nodes == 1) { // op that can't be batched
@@ -173,19 +186,6 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   new_graph.outputs = new_outputs;
 
   return new_graph;
-}
-
-nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry,
-                               std::unordered_map<nnvm::Node*,
-                                                  std::vector<nnvm::NodePtr>> node_map) {
-  nnvm::Node* node_ptr = entry.node.get();
-  if (node_map.find(node_ptr) == node_map.end()) {
-    return entry;
-  }
-  std::vector<nnvm::NodePtr> new_nodes = node_map[node_ptr];
-  nnvm::NodePtr result_node;
-  result_node = new_nodes[entry.index < new_nodes.size() ? entry.index : 0]; // possibly non-batchable multi-out node
-  return nnvm::NodeEntry{result_node, 0, entry.version+1};
 }
 
 void DBatchEngine::ExecuteGraph(const nnvm::Graph& graph) {
