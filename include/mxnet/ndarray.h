@@ -688,6 +688,7 @@ class NDArray {
 
  private:
   friend class Imperative;
+  friend class DBatchEngine;;
   /*! \brief the real data chunk that backs NDArray */
   // shandle is used to store the actual values in the NDArray
   // aux_handles store the aux data(such as indices) if it's needed by non-default storage.
