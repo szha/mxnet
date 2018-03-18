@@ -79,17 +79,89 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   }
 
   // generate new graph
-  // create empty mapping from old node to new node
-  // for each step
-    // for each op
-      // update inputs according to node mapping
-      // concat inputs and bookkeep lengths
+  // create mapping from old node to new node
+  std::unordered_map<nnvm::Node*, nnvm::NodePtr> old_new_node_map;
+  for (const std::unordered_map<int64_t, std::vector<nnvm::NodePtr>> step : forward_steps) {
+    for (const std::pair<int64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
+      int64_t op_sign = step_ops.first;
+      const std::vector<nnvm::NodePtr> op_ptrs = step_ops.second;
+      size_t num_nodes = op_ptrs.size();
+      nnvm::Node* first_op_node = op_ptrs.front().get();
+      if (num_nodes == 1) { // op that can't be batched
+        // TODO skip batching
+      }
+
+      size_t num_inputs = first_op_node->num_inputs(), num_outputs = first_op_node->num_outputs();
+
+      std::unordered_set<size_t> batchable_data_indices = {0}; // TODO find batchable data tensors from op
+
+      // record lengths of each sample
+      std::vector<size_t> sample_lengths(num_nodes);
+      for (uint32_t j = 0; j < num_nodes; j++) {
+        sample_lengths[j] = 1; // TODO get shape from node->ndarray mapping
+      }
+
+      std::vector<nnvm::NodeEntry> batch_node_inputs(num_inputs);
+      for (uint32_t i = 0; i < num_inputs; i++) {
+        if (batchable_data_indices.find(i) != batchable_data_indices.end()) {
+          // batchable input, create concat node
+          size_t in_batch_axis = 0; // TODO get batch axis from nodes for each input index
+
+          std::vector<nnvm::NodeEntry> concat_node_inputs(num_nodes);
+          std::string concat_node_name = "batch_input_" + std::to_string(i) + "_concat";
+          for (const nnvm::NodePtr op_ptr : op_ptrs) {
+            nnvm::NodeEntry input_entry = op_ptr.get()->inputs[i];
+            concat_node_inputs.emplace_back(map_node_entry(input_entry,
+                                                           old_new_node_map));
+            concat_node_name += "_" + input_entry.node->attrs.name;
+          }
+          std::unordered_map<std::string, std::string> concat_args = {
+            {"num_args", std::to_string(num_nodes)},
+            {"dim", std::to_string(in_batch_axis)}
+          };
+
+          batch_node_inputs.emplace_back(MakeNode("concat", "concat_", concat_node_inputs,
+                                                  concat_args));
+        } else { // TODO unbatchable, signature should not allow different unbatchable inputs
+          batch_node_inputs.emplace_back(map_node_entry(first_op_node->inputs[i],
+                                                        old_new_node_map));
+        }
+      }
+
       // create op with concat inputs
-      // slice according to lengths to get new node
-      // record mapping from old node to new node
-  // (TODO szha)
+      const Op* batch_op = first_op_node->op();
+      nnvm::NodeEntry batch_node = MakeNode(batch_op->name.c_str(),
+                                            "batch_"+std::to_string(op_sign),
+                                            batch_node_inputs, first_op_node->attrs.dict);
+
+      for (uint32_t i = 0; i < num_outputs; i++) {
+        nnvm::NodeEntry out_node{batch_node.node, i, batch_node.version+i+1};
+        std::vector<nnvm::NodeEntry> slice_input = {out_node};
+
+        // slice according to lengths to get new node
+        for (uint32_t j = 0, begin = 0; j < num_nodes; j++, begin += sample_lengths[j]) {
+          size_t out_batch_axis = 0; // TODO get batch axis for each output
+          std::unordered_map<std::string, std::string> slice_args = {
+            {"begin", "(" + std::to_string(begin) + ",)"},
+            {"end", "(" + std::to_string(begin+sample_lengths[j]) + ",)"}
+          };
+          nnvm::NodeEntry slice_node = MakeNode("slice", batch_node.node.get()->attrs.name,
+                                                slice_input, slice_args);
+          old_new_node_map[op_ptrs[j].get()] = slice_node.node; // ???
+        }
+      }
+
+      // TODO record mapping from old node to new node
+
+    }
+  }
 
   return nnvm::Graph();
+}
+
+nnvm::NodeEntry map_node_entry(const nnvm::NodeEntry entry, std::unordered_map<nnvm::Node*, nnvm::NodePtr> node_map) {
+  // TODO
+  return nnvm::NodeEntry();
 }
 
 void DBatchEngine::ExecuteGraph(const nnvm::Graph& graph) {
