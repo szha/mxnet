@@ -55,6 +55,14 @@ class DBatchEngine {
     graphs_.clear();
   }
 
+  void RecordArray(const NDArray& arr) {
+    if (entry_arr_.count(arr.entry_)) {
+      CHECK_EQ(entry_arr_[arr.entry_].var(), arr.var());
+    } else {
+      entry_arr_[arr.entry_] = arr;
+    }
+  }
+
   bool is_dbatch() const {
     return is_dbatch_;
   }
@@ -73,6 +81,8 @@ class DBatchEngine {
   static MX_THREAD_LOCAL bool is_dbatch_;
 #endif
   std::vector<nnvm::Graph> graphs_;
+  nnvm::NodeEntryMap<NDArray> entry_arr_;
+
 
   nnvm::Graph BatchGraphs(std::vector<nnvm::Graph>& graphs);
   void ExecuteGraph(nnvm::Graph& graph);

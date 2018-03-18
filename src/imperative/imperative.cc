@@ -109,7 +109,6 @@ OpStatePtr Imperative::Invoke(
 
   if (DBatchEngine::Get()->is_dbatch()) {
     // skip forward execution
-    // (TODO) save array information
     LOG(INFO) << "skip forward execution";
     return OpStatePtr();
   }

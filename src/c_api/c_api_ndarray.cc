@@ -104,6 +104,15 @@ void MXImperativeInvokeImpl(AtomicSymbolCreator creator,
   if (Imperative::Get()->is_recording()) {
     Imperative::Get()->RecordOp(std::move(attrs), ndinputs, ndoutputs, state);
   }
+  if (DBatchEngine::Get()->is_dbatch()) {
+    // record entry->ndarray
+    for (NDArray* arr : ndinputs) {
+      DBatchEngine::Get()->RecordArray(*arr);
+    }
+    for (NDArray* arr : ndoutputs) {
+      DBatchEngine::Get()->RecordArray(*arr);
+    }
+  }
 
   for (int i = *num_outputs; i < infered_num_outputs; ++i) delete ndoutputs[i];
 
@@ -325,7 +334,6 @@ int MXAutogradBackwardEx(mx_uint num_output,
                          int **grad_stypes) {
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
-  LOG(INFO) << "output address: " << reinterpret_cast<uint64_t>(output_handles[0]);
   // (TODO) if output_handles is in dbatch
   if (true) {
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
