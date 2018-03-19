@@ -34,13 +34,13 @@ DBatchEngine* DBatchEngine::Get() {
   return &inst;
 }
 
-int64_t ComputeNodeSign(const nnvm::NodePtr& n) {
+uint64_t ComputeNodeSign(const nnvm::NodePtr& n) {
   static int cnt = 1;
   // (TODO szha)
   if (n->is_variable()) {
     return cnt++;
   }
-  return reinterpret_cast<int64_t>(n->op());
+  return reinterpret_cast<uint64_t>(n->op());
 }
 
 nnvm::NodeEntry MapNodeEntry(const nnvm::NodeEntry& entry,
@@ -123,12 +123,12 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
 
   LOG(INFO) << "max depth " << max_depth;
   // depth: sign->node
-  std::vector<std::unordered_map<int64_t, std::vector<nnvm::NodePtr>>> forward_steps;
+  std::vector<std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>>> forward_steps;
   forward_steps.resize(max_depth + 1);
 
   for (const nnvm::Graph& g : graphs) {
     nnvm::DFSVisit(g.outputs, [&](const nnvm::NodePtr& n){
-      int64_t sign = ComputeNodeSign(n);
+      uint64_t sign = ComputeNodeSign(n);
       int depth = depth_map.at(n.get());
       forward_steps[depth][sign].emplace_back(n);
     });
@@ -139,10 +139,10 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
   for (uint32_t istep = 0; istep < forward_steps.size(); istep++) {
 
-    const std::unordered_map<int64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
-    for (const std::pair<int64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
+    const std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
+    for (const std::pair<uint64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
 
-      int64_t op_sign = step_ops.first;
+      uint64_t op_sign = step_ops.first;
       const std::vector<nnvm::NodePtr>& op_ptrs = step_ops.second;
       size_t num_nodes = op_ptrs.size();
       nnvm::Node* first_op_node = op_ptrs.front().get();
