@@ -36,7 +36,7 @@ namespace mxnet {
 
 class DBatchEngine {
  public:
-  void SaveGraph(nnvm::Graph& g) {
+  void SaveGraph(const nnvm::Graph& g) {
     graphs_.push_back(g);
   }
 
@@ -84,8 +84,8 @@ class DBatchEngine {
   nnvm::NodeEntryMap<NDArray> entry_arr_;
 
 
-  nnvm::Graph BatchGraphs(std::vector<nnvm::Graph>& graphs);
-  void ExecuteGraph(nnvm::Graph& graph);
+  nnvm::Graph BatchGraphs(const std::vector<nnvm::Graph>& graphs);
+  void ExecuteGraph(const nnvm::Graph& graph);
 };
 
 }  // namespace mxnet
