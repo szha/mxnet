@@ -176,6 +176,8 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         LOG(INFO) << l;
       }
 
+      // concat inputs
+      // TODO this can be inefficient. keep a mapping of concat inputs from last step
       std::vector<nnvm::NodeEntry> batch_node_inputs;
       batch_node_inputs.reserve(num_inputs);
       for (uint32_t i = 0; i < num_inputs; i++) {
@@ -201,6 +203,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         std::vector<nnvm::NodeEntry> slice_input = {out_node};
 
         // slice according to lengths to get new node
+        // TODO this can be inefficient. split only when necessary
         for (uint32_t j = 0, begin = 0; j < num_nodes; j++, begin += sample_lengths[j]) {
           size_t out_batch_axis = 0; // TODO get batch axis for each output
           std::unordered_map<std::string, std::string> slice_args = {
