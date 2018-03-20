@@ -49,7 +49,23 @@ def apply_weight_drop(block, local_param_name, rate, axes=(),
                 param_dict[full_param_name] = dropped_param
             for reg_param_dict in reg_param_dicts:
                 reg_param_dict[local_param_name] = dropped_param
-            super(Block, block).__setattr__(local_param_name, dropped_param)
+            local_attr = getattr(block, local_param_name)
+            if local_attr == param:
+                super(Block, block).__setattr__(local_param_name, dropped_param)
+            else:
+                if isinstance(local_attr, (list, tuple)):
+                    if isinstance(local_attr, tuple):
+                        local_attr = list(local_attr)
+                    for i, v in enumerate(local_attr):
+                        if v == param:
+                            local_attr[i] = dropped_param
+                elif isinstance(local_attr, dict):
+                    for k, v in local_attr:
+                        if v == param:
+                            local_attr[k] = dropped_param
+                else:
+                    continue
+                super(Block, block).__setattr__(local_param_name, local_attr)
     else:
         return block
 
