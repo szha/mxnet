@@ -75,8 +75,8 @@ args = parser.parse_args()
 # Load data
 ###############################################################################
 
-context = [mx.cpu()] if args.gpus is None or args.gpus == "" else [
-        mx.gpu(int(i)) for i in args.gpus.split(',')]
+context = [mx.cpu()] if args.gpus is None or args.gpus == "" else \
+          [mx.gpu(int(i)) for i in args.gpus.split(',')]
 
 train_dataset = data.text.lm.WikiText2(segment='train', seq_len=args.bptt,
                                        eos='<eos>')
@@ -124,11 +124,11 @@ ntokens = len(vocab)
 
 if args.weight_dropout:
     model = AWDLSTM(args.model, vocab, args.emsize, args.nhid, args.nlayers,
-                 args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
-                 args.tied)
+                    args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
+                    args.tied)
 else:
     model = RNNModel(args.model, vocab, args.emsize, args.nhid,
-                 args.nlayers, args.dropout, args.tied)
+                     args.nlayers, args.dropout, args.tied)
 
 model.initialize(mx.init.Xavier(), ctx=context)
 
@@ -182,10 +182,10 @@ def train():
             hiddens = [detach(hidden) for hidden in hiddens]
             Ls = []
             with autograd.record():
-                for i, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
+                for j, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
                     output, h = model(X, h)
                     Ls.append(loss(mx.nd.reshape(output, (-3, -1)), mx.nd.reshape(y, (-1,))))
-                    hiddens[i] = h
+                    hiddens[j] = h
             for L in Ls:
                 L.backward()
             for ctx in context:

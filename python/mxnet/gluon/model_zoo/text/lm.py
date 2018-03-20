@@ -14,14 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Language models."""
 
 from .base import _TextSeq2SeqModel, ExtendedSequential, TransformerBlock
-from .base import get_rnn_layer, get_rnn_cell, apply_weight_drop
-from ... import nn, contrib
+from .base import get_rnn_layer, apply_weight_drop
+from ... import nn
 from .... import init
 
 
 class AWDLSTM(_TextSeq2SeqModel):
+    """AWD language model."""
     def __init__(self, mode, vocab, embed_dim, hidden_dim, num_layers,
                  dropout=0.5, drop_h=0.5, drop_i=0.5, drop_e=0.1, weight_drop=0,
                  tie_weights=False, **kwargs):
@@ -44,7 +46,7 @@ class AWDLSTM(_TextSeq2SeqModel):
         embedding = nn.HybridSequential()
         with embedding.name_scope():
             embedding_block = nn.Embedding(len(self._src_vocab), self._embed_dim,
-                                       weight_initializer=init.Uniform(0.1))
+                                           weight_initializer=init.Uniform(0.1))
             if self._drop_e:
                 apply_weight_drop(embedding_block, 'weight', self._drop_e, axes=(1,))
             embedding.add(embedding_block)
@@ -76,7 +78,7 @@ class AWDLSTM(_TextSeq2SeqModel):
         return self.encoder[0].begin_state(*args, **kwargs)
 
 class RNNModel(_TextSeq2SeqModel):
-
+    """Simple RNN language model."""
     def __init__(self, mode, vocab, embed_dim, hidden_dim,
                  num_layers, dropout=0.5, tie_weights=False, **kwargs):
         super(RNNModel, self).__init__(vocab, vocab, **kwargs)
@@ -113,7 +115,7 @@ class RNNModel(_TextSeq2SeqModel):
     def _get_decoder(self):
         vocab_size = len(self._tgt_vocab)
         if self._tie_weights:
-            output = nn.Dense(vocab_size, flatten=False, params=self.embedding.params)
+            output = nn.Dense(vocab_size, flatten=False, params=self.embedding[0].params)
         else:
             output = nn.Dense(vocab_size, flatten=False)
         return output

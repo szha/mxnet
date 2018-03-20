@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Building blocks and utility for models."""
 
 from ... import Block, HybridBlock, Parameter, contrib, nn, rnn
 from .... import nd
@@ -28,7 +29,7 @@ class _TextSeq2SeqModel(Block):
     def begin_state(self, *args, **kwargs):
         return self.encoder.begin_state(*args, **kwargs)
 
-    def forward(self, inputs, begin_state=None):
+    def forward(self, inputs, begin_state=None): # pylint: disable=arguments-differ
         embedded_inputs = self.embedding(inputs)
         if not begin_state:
             begin_state = self.begin_state()
@@ -38,15 +39,19 @@ class _TextSeq2SeqModel(Block):
 
 
 def apply_weight_drop(block, local_param_name, rate, axes=(),
-                weight_dropout_mode='training'):
-    params = block.collect_params('.*_{}'.format(local_param_name))
-    for full_param_name, param in params.items():
-        dropped_param = WeightDropParameter(param, rate, weight_dropout_mode, axes)
-        param_dicts, reg_param_dicts = _find_param(block, full_param_name, local_param_name)
-        for param_dict in param_dicts:
-            param_dict[full_param_name] = dropped_param
-        for reg_param_dict in reg_param_dicts:
-            reg_param_dict[local_param_name] = dropped_param
+                      weight_dropout_mode='training'):
+    if rate:
+        params = block.collect_params('.*{}'.format(local_param_name))
+        for full_param_name, param in params.items():
+            dropped_param = WeightDropParameter(param, rate, weight_dropout_mode, axes)
+            param_dicts, reg_param_dicts = _find_param(block, full_param_name, local_param_name)
+            for param_dict in param_dicts:
+                param_dict[full_param_name] = dropped_param
+            for reg_param_dict in reg_param_dicts:
+                reg_param_dict[local_param_name] = dropped_param
+            super(Block, block).__setattr__(local_param_name, dropped_param)
+    else:
+        return block
 
 def _find_param(block, full_param_name, local_param_name):
     param_dict_results = []
@@ -75,6 +80,7 @@ def _find_param(block, full_param_name, local_param_name):
 def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
                  dropout, weight_dropout,
                  var_drop_in, var_drop_state, var_drop_out):
+    """create rnn cell given specs"""
     rnn_cell = rnn.SequentialRNNCell()
     with rnn_cell.name_scope():
         for i in range(num_layers):
@@ -103,18 +109,19 @@ def get_rnn_cell(mode, num_layers, num_embed, num_hidden,
 
 
 def get_rnn_layer(mode, num_layers, num_embed, num_hidden, dropout, weight_dropout):
+    """create rnn layer given specs"""
     if mode == 'rnn_relu':
         block = rnn.RNN(num_hidden, 'relu', num_layers, dropout=dropout,
-                       input_size=num_embed)
+                        input_size=num_embed)
     elif mode == 'rnn_tanh':
         block = rnn.RNN(num_hidden, num_layers, dropout=dropout,
-                       input_size=num_embed)
+                        input_size=num_embed)
     elif mode == 'lstm':
         block = rnn.LSTM(num_hidden, num_layers, dropout=dropout,
-                        input_size=num_embed)
+                         input_size=num_embed)
     elif mode == 'gru':
         block = rnn.GRU(num_hidden, num_layers, dropout=dropout,
-                       input_size=num_embed)
+                        input_size=num_embed)
     if weight_dropout:
         apply_weight_drop(block, 'h2h_weight', rate=weight_dropout)
 
@@ -132,7 +139,7 @@ class RNNCellLayer(Block):
         self._axis = layout.find('T')
         self._batch_axis = layout.find('N')
 
-    def forward(self, inputs, states=None):
+    def forward(self, inputs, states=None): # pylint: disable=arguments-differ
         batch_size = inputs.shape[self._batch_axis]
         skip_states = states is None
         if skip_states:
@@ -154,7 +161,7 @@ class RNNCellLayer(Block):
         return outputs, states
 
 class ExtendedSequential(nn.Sequential):
-    def forward(self, *x):
+    def forward(self, *x): # pylint: disable=arguments-differ
         for block in self._children:
             x = block(*x)
         return x
@@ -184,10 +191,10 @@ class WeightDropParameter(Parameter):
     def __init__(self, parameter, rate=0.0, mode='training', axes=()):
         p = parameter
         super(WeightDropParameter, self).__init__(
-                name=p.name, grad_req=p.grad_req, shape=p._shape, dtype=p.dtype,
-                lr_mult=p.lr_mult, wd_mult=p.wd_mult, init=p.init,
-                allow_deferred_init=p._allow_deferred_init,
-                differentiable=p._differentiable)
+            name=p.name, grad_req=p.grad_req, shape=p._shape, dtype=p.dtype,
+            lr_mult=p.lr_mult, wd_mult=p.wd_mult, init=p.init,
+            allow_deferred_init=p._allow_deferred_init,
+            differentiable=p._differentiable)
         self._rate = rate
         self._mode = mode
         self._axes = axes
