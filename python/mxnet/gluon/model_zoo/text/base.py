@@ -40,34 +40,35 @@ class _TextSeq2SeqModel(Block):
 
 def apply_weight_drop(block, local_param_name, rate, axes=(),
                       weight_dropout_mode='training'):
-    if rate:
-        params = block.collect_params('.*{}'.format(local_param_name))
-        for full_param_name, param in params.items():
-            dropped_param = WeightDropParameter(param, rate, weight_dropout_mode, axes)
-            param_dicts, reg_param_dicts = _find_param(block, full_param_name, local_param_name)
-            for param_dict in param_dicts:
-                param_dict[full_param_name] = dropped_param
-            for reg_param_dict in reg_param_dicts:
-                reg_param_dict[local_param_name] = dropped_param
-            local_attr = getattr(block, local_param_name)
-            if local_attr == param:
-                super(Block, block).__setattr__(local_param_name, dropped_param)
+    if not rate:
+        return
+
+    params = block.collect_params('.*{}'.format(local_param_name))
+    for full_param_name, param in params.items():
+        dropped_param = WeightDropParameter(param, rate, weight_dropout_mode, axes)
+        param_dicts, reg_param_dicts = _find_param(block, full_param_name, local_param_name)
+        for param_dict in param_dicts:
+            param_dict[full_param_name] = dropped_param
+        for reg_param_dict in reg_param_dicts:
+            reg_param_dict[local_param_name] = dropped_param
+        local_attr = getattr(block, local_param_name)
+        if local_attr == param:
+            super(Block, block).__setattr__(local_param_name, dropped_param)
+        else:
+            if isinstance(local_attr, (list, tuple)):
+                if isinstance(local_attr, tuple):
+                    local_attr = list(local_attr)
+                for i, v in enumerate(local_attr):
+                    if v == param:
+                        local_attr[i] = dropped_param
+            elif isinstance(local_attr, dict):
+                for k, v in local_attr:
+                    if v == param:
+                        local_attr[k] = dropped_param
             else:
-                if isinstance(local_attr, (list, tuple)):
-                    if isinstance(local_attr, tuple):
-                        local_attr = list(local_attr)
-                    for i, v in enumerate(local_attr):
-                        if v == param:
-                            local_attr[i] = dropped_param
-                elif isinstance(local_attr, dict):
-                    for k, v in local_attr:
-                        if v == param:
-                            local_attr[k] = dropped_param
-                else:
-                    continue
-                super(Block, block).__setattr__(local_param_name, local_attr)
-    else:
-        return block
+                continue
+            super(Block, block).__setattr__(local_param_name, local_attr)
+
 
 def _find_param(block, full_param_name, local_param_name):
     param_dict_results = []
