@@ -57,9 +57,9 @@ nnvm::NodeEntry MapNodeEntry(const nnvm::NodeEntry& entry,
   return nnvm::NodeEntry{result_node, 0, entry.version};
 }
 
-nnvm::NodePtr& MapNode(const nnvm::NodePtr& node,
-                       const std::unordered_map<nnvm::Node*,
-                                                std::vector<nnvm::NodePtr>>& node_map) {
+nnvm::NodePtr MapNode(const nnvm::NodePtr& node,
+                      const std::unordered_map<nnvm::Node*,
+                                               std::vector<nnvm::NodePtr>>& node_map) {
   nnvm::Node* node_ptr = node.get();
   std::vector<nnvm::NodeEntry>& old_inputs = node_ptr->inputs;
   std::vector<nnvm::NodeEntry> new_inputs;
@@ -76,19 +76,32 @@ nnvm::NodePtr& MapNode(const nnvm::NodePtr& node,
   return new_node;
 }
 
-size_t HashNodeEntries(const std::vector<nnvm::NodeEntry> nodes) {
-  size_t result = 0;
-  auto hash_func = nnvm::NodeEntryHash();
-  for (auto n : nodes) {
-    result = (result >> 1) ^ hash_func(n);
+
+struct NodeEntryVectorHash {
+  size_t operator()(const std::vector<nnvm::NodeEntry>& nodes) const {
+    size_t result = 0;
+    auto hash_func = nnvm::NodeEntryHash();
+    for (auto n : nodes) {
+      result = (result >> 1) ^ hash_func(n);
+    }
+    return result;
   }
-  return result;
-}
+};
+struct NodeEntryVectorEqual {
+  size_t operator()(const std::vector<nnvm::NodeEntry>& a, const std::vector<nnvm::NodeEntry>& b) const {
+    if (a.size() != b.size()) return false;
+    auto equal_func = nnvm::NodeEntryEqual();
+    for (size_t i = 0; i < a.size(); i++) {
+      if (!equal_func(a[i], b[i])) return false;
+    }
+    return true;
+  }
+};
 
 nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
                                  uint32_t input_index,
                                  const std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>>& node_map,
-                                 const std::unordered_map<size_t, nnvm::NodeEntry>& concat_map) {
+                                 const std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual>& concat_map) {
   size_t num_nodes = op_ptrs.size();
   size_t in_batch_axis = 0; // TODO get batch axis from nodes for each input index
 
@@ -102,8 +115,7 @@ nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
     node_name += "_" + input_entry.node->attrs.name;
   }
 
-  size_t inputs_hash = HashNodeEntries(node_inputs);
-  auto found = concat_map.find(inputs_hash);
+  auto found = concat_map.find(node_inputs);
   if (found == concat_map.end()) {
     std::unordered_map<std::string, std::string> concat_args = {
       {"num_args", std::to_string(num_nodes)},
@@ -154,7 +166,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // generate new graph
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
-  std::unordered_map<size_t, nnvm::NodeEntry> concat_map;
+  std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual> concat_map;
   for (uint32_t istep = 0; istep < forward_steps.size(); istep++) {
 
     const std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
@@ -234,9 +246,8 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
           old_new_node_map[op_ptrs[j].get()].emplace_back(slice_node.node);
           slices.emplace_back(slice_node);
         }
-        size_t entries_hash = HashNodeEntries(slices);
-        CHECK(concat_map.find(entries_hash) == concat_map.end()) << "Must not have cycle.";
-        concat_map[entries_hash] = out_node;
+        CHECK(concat_map.find(slices) == concat_map.end()) << "Must not have cycle.";
+        concat_map[slices] = out_node;
       }
       LOG(INFO) << "splitted";
     }
