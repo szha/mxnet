@@ -54,12 +54,12 @@ nnvm::NodeEntry MapNodeEntry(const nnvm::NodeEntry& entry,
   // when unbatchable node was processed, only one entry is added. because it's not NodeEntry, it's
   // not possible to replicate the nodes upfront.
   result_node = new_nodes[entry.index < new_nodes.size() ? entry.index : 0]; // possibly non-batchable multi-out node
-  return nnvm::NodeEntry{result_node, 0, entry.version+1};
+  return nnvm::NodeEntry{result_node, 0, entry.version};
 }
 
-nnvm::NodePtr& MapNode(const nnvm::NodePtr& node,
-                       const std::unordered_map<nnvm::Node*,
-                                                std::vector<nnvm::NodePtr>>& node_map) {
+nnvm::NodePtr MapNode(const nnvm::NodePtr& node,
+                      const std::unordered_map<nnvm::Node*,
+                                               std::vector<nnvm::NodePtr>>& node_map) {
   nnvm::Node* node_ptr = node.get();
   std::vector<nnvm::NodeEntry>& old_inputs = node_ptr->inputs;
   std::vector<nnvm::NodeEntry> new_inputs;
@@ -76,27 +76,56 @@ nnvm::NodePtr& MapNode(const nnvm::NodePtr& node,
   return new_node;
 }
 
+
+struct NodeEntryVectorHash {
+  size_t operator()(const std::vector<nnvm::NodeEntry>& nodes) const {
+    size_t result = 0;
+    auto hash_func = nnvm::NodeEntryHash();
+    for (auto n : nodes) {
+      result = (result >> 1) ^ hash_func(n);
+    }
+    return result;
+  }
+};
+struct NodeEntryVectorEqual {
+  size_t operator()(const std::vector<nnvm::NodeEntry>& a, const std::vector<nnvm::NodeEntry>& b) const {
+    if (a.size() != b.size()) return false;
+    auto equal_func = nnvm::NodeEntryEqual();
+    for (size_t i = 0; i < a.size(); i++) {
+      if (!equal_func(a[i], b[i])) return false;
+    }
+    return true;
+  }
+};
+
 nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
                                  uint32_t input_index,
-                                 const std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>>& node_map) {
+                                 const std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>>& node_map,
+                                 const std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual>& concat_map) {
   size_t num_nodes = op_ptrs.size();
   size_t in_batch_axis = 0; // TODO get batch axis from nodes for each input index
 
   // batchable input, create concat node
   std::vector<nnvm::NodeEntry> node_inputs;
   node_inputs.reserve(num_nodes);
-  std::string node_name = "batch_input_" + std::to_string(input_index) + "_concat";
+  std::string node_name = "batch_concat_in_" + std::to_string(input_index);
   for (const nnvm::NodePtr op_ptr : op_ptrs) {
     nnvm::NodeEntry input_entry = op_ptr.get()->inputs[input_index];
     node_inputs.emplace_back(MapNodeEntry(input_entry, node_map));
     node_name += "_" + input_entry.node->attrs.name;
   }
-  std::unordered_map<std::string, std::string> concat_args = {
-    {"num_args", std::to_string(num_nodes)},
-    {"dim", std::to_string(in_batch_axis)}
-  };
 
-  return MakeNode("concat", node_name, node_inputs, concat_args);
+  auto found = concat_map.find(node_inputs);
+  if (found == concat_map.end()) {
+    std::unordered_map<std::string, std::string> concat_args = {
+      {"num_args", std::to_string(num_nodes)},
+      {"dim", std::to_string(in_batch_axis)}
+    };
+
+    return MakeNode("concat", node_name, node_inputs, concat_args);
+  } else {
+    return found->second;
+  }
 }
 
 nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
@@ -137,6 +166,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // generate new graph
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
+  std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual> concat_map;
   for (uint32_t istep = 0; istep < forward_steps.size(); istep++) {
 
     const std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
@@ -182,8 +212,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
       batch_node_inputs.reserve(num_inputs);
       for (uint32_t i = 0; i < num_inputs; i++) {
         if (batchable_data_indices.find(i) != batchable_data_indices.end()) {
-
-          batch_node_inputs.emplace_back(CreateConcatNode(op_ptrs, i, old_new_node_map));
+          batch_node_inputs.emplace_back(CreateConcatNode(op_ptrs, i, old_new_node_map, concat_map));
         } else { // TODO unbatchable input, signature should not allow different unbatchable inputs
           batch_node_inputs.emplace_back(MapNodeEntry(first_op_node->inputs[i],
                                                       old_new_node_map));
@@ -199,8 +228,10 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
       LOG(INFO) << "created batched op: " << batch_node.node.get()->attrs.name;
 
       for (uint32_t i = 0; i < num_outputs; i++) {
-        nnvm::NodeEntry out_node{batch_node.node, i, batch_node.version+i+1};
+        nnvm::NodeEntry out_node{batch_node.node, i, batch_node.version};
         std::vector<nnvm::NodeEntry> slice_input = {out_node};
+        std::vector<nnvm::NodeEntry> slices;
+        slices.reserve(num_nodes);
 
         // slice according to lengths to get new node
         // TODO this can be inefficient. split only when necessary
@@ -213,7 +244,10 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
           nnvm::NodeEntry slice_node = MakeNode("slice", out_node.node.get()->attrs.name+"_slice_"+std::to_string(j),
                                                 slice_input, slice_args);
           old_new_node_map[op_ptrs[j].get()].emplace_back(slice_node.node);
+          slices.emplace_back(slice_node);
         }
+        CHECK(concat_map.find(slices) == concat_map.end()) << "Must not have cycle.";
+        concat_map[slices] = out_node;
       }
       LOG(INFO) << "splitted";
     }
