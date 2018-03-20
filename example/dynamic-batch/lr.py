@@ -21,7 +21,10 @@ train_data = gluon.data.DataLoader(gluon.data.ArrayDataset(X, y),
                                       batch_size=batch_size, shuffle=True)
 
 
-net = gluon.nn.Dense(1, in_units=2)
+net = gluon.nn.HybridSequential()
+with net.name_scope():
+    net.add(gluon.nn.Dense(3, in_units=2))
+    net.add(gluon.nn.Dense(1, in_units=3))
 params = net.collect_params()
 params.initialize(mx.init.Normal(sigma=1.), ctx=model_ctx)
 
