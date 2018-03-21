@@ -183,7 +183,12 @@ def train():
             Ls = []
             with autograd.record():
                 for j, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
+                    print("org params:")
+                    print(model.params)
                     output, h = model(X, h)
+                    print("dropped params:")
+                    print(model.params)
+                    return
                     Ls.append(loss(mx.nd.reshape(output, (-3, -1)), mx.nd.reshape(y, (-1,))))
                     hiddens[j] = h
             for L in Ls:
