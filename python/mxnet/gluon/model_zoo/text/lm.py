@@ -35,6 +35,10 @@ class AWDLSTM(_TextSeq2SeqModel):
         self._dropout = dropout
         self._drop_h = drop_h
         self._drop_i = drop_i
+<<<<<<< HEAD
+=======
+        self._drop_e = drop_e
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab
         self._weight_drop = weight_drop
         self._tie_weights = tie_weights
         self.embedding = self._get_embedding()
@@ -46,6 +50,11 @@ class AWDLSTM(_TextSeq2SeqModel):
         with embedding.name_scope():
             embedding_block = nn.Embedding(len(self._src_vocab), self._embed_dim,
                                            weight_initializer=init.Uniform(0.1))
+<<<<<<< HEAD
+=======
+            if self._drop_e:
+                apply_weight_drop(embedding_block, 'weight', self._drop_e, axes=(1,))
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab
             embedding.add(embedding_block)
             if self._drop_i:
                 embedding.add(nn.Dropout(self._drop_i, axes=(0,)))
@@ -66,7 +75,11 @@ class AWDLSTM(_TextSeq2SeqModel):
     def _get_decoder(self):
         vocab_size = len(self._tgt_vocab)
         if self._tie_weights:
+<<<<<<< HEAD
             output = nn.Dense(vocab_size, flatten=False, in_units = self._embed_dim, params=self.embedding[0].params)
+=======
+            output = nn.Dense(vocab_size, flatten=False, params=self.embedding.params)
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab
         else:
             output = nn.Dense(vocab_size, flatten=False)
         return output
@@ -90,6 +103,7 @@ class RNNModel(_TextSeq2SeqModel):
         self.decoder = self._get_decoder()
 
     def _get_embedding(self):
+<<<<<<< HEAD
 #         embedding = nn.HybridSequential()
 #         with embedding.name_scope():
 #             embedding.add(nn.Embedding(len(self._src_vocab), self._embed_dim,
@@ -98,6 +112,14 @@ class RNNModel(_TextSeq2SeqModel):
 #                 embedding.add(nn.Dropout(self._dropout))
         embedding = nn.Embedding(len(self._src_vocab), self._embed_dim,
                                        weight_initializer=init.Uniform(0.1))
+=======
+        embedding = nn.HybridSequential()
+        with embedding.name_scope():
+            embedding.add(nn.Embedding(len(self._src_vocab), self._embed_dim,
+                                       weight_initializer=init.Uniform(0.1)))
+            if self._dropout:
+                embedding.add(nn.Dropout(self._dropout))
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab
         return embedding
 
     def _get_encoder(self):
@@ -114,7 +136,11 @@ class RNNModel(_TextSeq2SeqModel):
     def _get_decoder(self):
         vocab_size = len(self._tgt_vocab)
         if self._tie_weights:
+<<<<<<< HEAD
             output = nn.Dense(vocab_size, flatten=False, in_units = self._embed_dim, params=self.embedding[0].params)
+=======
+            output = nn.Dense(vocab_size, flatten=False, params=self.embedding[0].params)
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab
         else:
             output = nn.Dense(vocab_size, flatten=False)
         return output

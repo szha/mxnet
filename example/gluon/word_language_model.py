@@ -49,6 +49,11 @@ parser.add_argument('--dropout_h', type=float, default=0.3,
                     help='dropout applied to hidden layer (0 = no dropout)')
 parser.add_argument('--dropout_i', type=float, default=0.4,
                     help='dropout applied to input layer (0 = no dropout)')
+
+
+
+
+
 parser.add_argument('--weight_dropout', type=float, default=0.65,
                     help='weight dropout applied to h2h weight matrix (0 = no weight dropout)')
 parser.add_argument('--tied', action='store_true',
@@ -122,7 +127,11 @@ ntokens = len(vocab)
 
 if args.weight_dropout:
     model = AWDLSTM(args.model, vocab, args.emsize, args.nhid, args.nlayers,
+<<<<<<< HEAD:example/gluon/word_language_model.py
                     args.dropout, args.dropout_h, args.dropout_i, args.weight_dropout,
+=======
+                    args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab:example/gluon/word_language_model.py
                     args.tied)
 else:
     model = RNNModel(args.model, vocab, args.emsize, args.nhid,
@@ -182,6 +191,10 @@ def train():
             with autograd.record():
                 for j, (X, y, h) in enumerate(zip(data_list, target_list, hiddens)):
                     output, h = model(X, h)
+<<<<<<< HEAD:example/gluon/word_language_model.py
+=======
+                    Ls.append(loss(mx.nd.reshape(output, (-3, -1)), mx.nd.reshape(y, (-1,))))
+>>>>>>> 42e70287535151781bcda4e7c26d47face1685ab:example/gluon/word_language_model.py
                     hiddens[j] = h
             for L in Ls:
                 L.backward()

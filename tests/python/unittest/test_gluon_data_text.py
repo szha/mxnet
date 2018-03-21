@@ -62,6 +62,32 @@ def test_wikitext2():
         pass
 
 
+def test_imdb():
+    train = d.text.sentiment.IMDB(root='data/imdb', segment='train')
+    test = d.text.sentiment.IMDB(root='data/imdb', segment='test')
+    unsup = d.text.sentiment.IMDB(root='data/imdb', segment='unsup')
+    assert len(train) == 25000, len(train)
+    assert len(test) == 25000, len(test)
+    assert len(unsup) == 50000, len(unsup)
+
+    import sys
+    if sys.version_info[0] == 3:
+        str_types = (str,)
+    else:
+        str_types = (str, unicode)
+
+    for i, (data, score) in enumerate(train):
+        assert isinstance(data, str_types)
+        assert score <= 4 or score >= 7
+
+    for i, (data, score) in enumerate(test):
+        assert isinstance(data, str_types)
+        assert score <= 4 or score >= 7
+
+    for i, (data, score) in enumerate(unsup):
+        assert isinstance(data, str_types)
+        assert score == 0
+
 
 if __name__ == '__main__':
     import nose

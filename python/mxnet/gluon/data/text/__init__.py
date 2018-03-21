@@ -22,3 +22,5 @@
 from .base import *
 
 from . import lm
+
+from . import sentiment
