@@ -1,9 +1,12 @@
 from __future__ import print_function
 import mxnet as mx
+import numpy as np
 from mxnet import nd, autograd, gluon
 
 data_ctx = mx.cpu()
 model_ctx = mx.cpu()
+mx.random.seed(0)
+np.random.seed(0)
 
 num_inputs = 2
 num_outputs = 1
@@ -12,13 +15,14 @@ num_examples = 10000
 def real_fn(X):
     return 2 * X[:, 0] - 3.4 * X[:, 1] + 4.2
 
-X = nd.random_normal(shape=(num_examples, num_inputs))
-noise = 0.01 * nd.random_normal(shape=(num_examples,))
+X = nd.random.normal(shape=(num_examples, num_inputs))
+noise = 0.01 * nd.random.normal(shape=(num_examples,))
 y = real_fn(X) + noise
 
 batch_size = 4
 train_data = gluon.data.DataLoader(gluon.data.ArrayDataset(X, y),
-                                      batch_size=batch_size, shuffle=True)
+                                   #batch_size=batch_size, shuffle=True)
+                                   batch_size=batch_size, shuffle=False)
 
 
 net = gluon.nn.HybridSequential()
@@ -48,6 +52,13 @@ for e in range(epochs):
         # loss.backward()
 	output.backward()
 	if (i+1) == 5:
+            w = params.get("weight").data()
+            b = params.get("bias").data()
+            print(nd.FullyConnected(data=data, weight=w, bias=b, num_hidden=1))
+            print(output)
+            print(data)
+            print(params.get("weight").grad())
+            print(params.get("bias").grad())
 	    raise ValueError
             trainer.step(batch_size)
         # cumulative_loss += nd.mean(loss).asscalar()

@@ -332,7 +332,7 @@ int MXAutogradBackwardEx(mx_uint num_output,
                          int is_train,
                          NDArrayHandle **grad_handles,
                          int **grad_stypes) {
-  MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
+  //MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
   // (TODO) if output_handles is in dbatch
   if (true) {

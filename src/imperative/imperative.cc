@@ -150,8 +150,10 @@ void Imperative::GetBackwardDependency(
   std::vector<bool>& save_outputs = *p_save_outputs;
   save_inputs.resize(num_inputs);
   save_outputs.resize(num_outputs);
-  std::fill(save_inputs.begin(), save_inputs.end(), false);
-  std::fill(save_outputs.begin(), save_outputs.end(), false);
+  // TODO(haibin) set back to default value = false.
+  // Currently used for looking up NDArrays associated with the old graph
+  std::fill(save_inputs.begin(), save_inputs.end(), true);
+  std::fill(save_outputs.begin(), save_outputs.end(), true);
 
   node->inputs.clear();
   node->inputs.reserve(num_inputs);
@@ -296,14 +298,19 @@ void Imperative::RunGraph(
   std::vector<OpReqType> req;
 
   for (size_t i = node_start; i < node_end; ++i) {
+    LOG(INFO) << "execute node " << i;
     const nnvm::IndexedGraph::Node& node = idx[i];
     if (node.source->op() == nullptr) continue;
     auto num_outputs = node.source->num_outputs();
     ndinputs.clear();
     ndinputs.reserve(node.inputs.size());
+    LOG(INFO) << "node " << i << " has " << node.inputs.size() << " inputs";
     for (const auto& j : node.inputs) {
-      ndinputs.emplace_back(arrays[idx.entry_id(j)]);
+      auto eid = idx.entry_id(j);
+      LOG(INFO) << "check input " << eid;
+      ndinputs.emplace_back(arrays[eid]);
       CHECK(!ndinputs.back()->is_none()) << idx[j.node_id].source->attrs.name << " " << j.index;
+      LOG(INFO) << "input " << eid << " added";
     }
     ndoutputs.clear();
     ndoutputs.reserve(num_outputs);
@@ -348,15 +355,16 @@ void Imperative::RunGraph(
       if (recording) RecordOp(NodeAttrs(node.source->attrs), ndinputs, ndoutputs);
     }
 
-    for (const auto& j : node.inputs) {
-      size_t eid = idx.entry_id(j);
-      --ref_count[eid];
-      if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
-    }
-    for (size_t j = 0; j < ndoutputs.size(); ++j) {
-      size_t eid = idx.entry_id(i, j);
-      if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
-    }
+    // TODO(haibin) correctly reset ref count so that NDArrays are released as soon as they are not needed
+    //for (const auto& j : node.inputs) {
+    //  size_t eid = idx.entry_id(j);
+    //  --ref_count[eid];
+    //  if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
+    //}
+    //for (size_t j = 0; j < ndoutputs.size(); ++j) {
+    //  size_t eid = idx.entry_id(i, j);
+    //  if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
+    //}
   }
 }
 
