@@ -25,7 +25,7 @@ from .... import init
 class AWDLSTM(_TextSeq2SeqModel):
     """AWD language model."""
     def __init__(self, mode, vocab, embed_dim, hidden_dim, num_layers,
-                 dropout=0.5, drop_h=0.5, drop_i=0.5, drop_e=0.1, weight_drop=0,
+                 dropout=0.5, drop_h=0.5, drop_i=0.5, weight_drop=0,
                  tie_weights=False, **kwargs):
         super(AWDLSTM, self).__init__(vocab, vocab, **kwargs)
         self._mode = mode
@@ -35,7 +35,6 @@ class AWDLSTM(_TextSeq2SeqModel):
         self._dropout = dropout
         self._drop_h = drop_h
         self._drop_i = drop_i
-        self._drop_e = drop_e
         self._weight_drop = weight_drop
         self._tie_weights = tie_weights
         self.embedding = self._get_embedding()
@@ -47,8 +46,6 @@ class AWDLSTM(_TextSeq2SeqModel):
         with embedding.name_scope():
             embedding_block = nn.Embedding(len(self._src_vocab), self._embed_dim,
                                            weight_initializer=init.Uniform(0.1))
-            if self._drop_e:
-                apply_weight_drop(embedding_block, 'weight', self._drop_e, axes=(1,))
             embedding.add(embedding_block)
             if self._drop_i:
                 embedding.add(nn.Dropout(self._drop_i, axes=(0,)))

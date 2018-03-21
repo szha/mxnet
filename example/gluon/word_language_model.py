@@ -49,8 +49,6 @@ parser.add_argument('--dropout_h', type=float, default=0.3,
                     help='dropout applied to hidden layer (0 = no dropout)')
 parser.add_argument('--dropout_i', type=float, default=0.4,
                     help='dropout applied to input layer (0 = no dropout)')
-parser.add_argument('--dropout_e', type=float, default=0.1,
-                    help='dropout applied to embedding layer (0 = no dropout)')
 parser.add_argument('--weight_dropout', type=float, default=0.65,
                     help='weight dropout applied to h2h weight matrix (0 = no weight dropout)')
 parser.add_argument('--tied', action='store_true',
@@ -124,7 +122,7 @@ ntokens = len(vocab)
 
 if args.weight_dropout:
     model = AWDLSTM(args.model, vocab, args.emsize, args.nhid, args.nlayers,
-                    args.dropout, args.dropout_h, args.dropout_i, args.dropout_e, args.weight_dropout,
+                    args.dropout, args.dropout_h, args.dropout_i, args.weight_dropout,
                     args.tied)
 else:
     model = RNNModel(args.model, vocab, args.emsize, args.nhid,
