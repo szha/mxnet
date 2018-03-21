@@ -90,12 +90,14 @@ class RNNModel(_TextSeq2SeqModel):
         self.decoder = self._get_decoder()
 
     def _get_embedding(self):
-        embedding = nn.HybridSequential()
-        with embedding.name_scope():
-            embedding.add(nn.Embedding(len(self._src_vocab), self._embed_dim,
-                                       weight_initializer=init.Uniform(0.1)))
-            if self._dropout:
-                embedding.add(nn.Dropout(self._dropout))
+#         embedding = nn.HybridSequential()
+#         with embedding.name_scope():
+#             embedding.add(nn.Embedding(len(self._src_vocab), self._embed_dim,
+#                                        weight_initializer=init.Uniform(0.1)))
+#             if self._dropout:
+#                 embedding.add(nn.Dropout(self._dropout))
+        embedding = nn.Embedding(len(self._src_vocab), self._embed_dim,
+                                       weight_initializer=init.Uniform(0.1))
         return embedding
 
     def _get_encoder(self):
