@@ -228,12 +228,8 @@ class WeightDropParameter(Parameter):
         NDArray on ctx
         """
         d = self._check_and_get(self._data, ctx)
-#         print("WeightDropParameter:d")
-#         print(d)
         if self._rate:
             d = nd.Dropout(d, self._rate, self._mode, self._axes)
-#         print("WeightDropParameter+:d")
-#         print(d)
         return d
 
     def __repr__(self):
