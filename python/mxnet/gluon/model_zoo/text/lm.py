@@ -116,8 +116,6 @@ class RNNModel(_TextSeq2SeqModel):
         vocab_size = len(self._tgt_vocab)
         if self._tie_weights:
             output = nn.Dense(vocab_size, flatten=False, in_units = self._embed_dim, params=self.embedding[0].params)
-            print(self.embedding[0].params)
-            print(self.embedding.params)
         else:
             output = nn.Dense(vocab_size, flatten=False)
         return output
