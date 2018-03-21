@@ -27,9 +27,9 @@ def get_frequencies(dataset):
 
 
 def test_wikitext2():
-    train = d.text.lm.WikiText2(root='data/wikitext-2', segment='train')
-    val = d.text.lm.WikiText2(root='data/wikitext-2', segment='val')
-    test = d.text.lm.WikiText2(root='data/wikitext-2', segment='test')
+    train = d.text.WikiText2(root='data/wikitext-2', segment='train')
+    val = d.text.WikiText2(root='data/wikitext-2', segment='val')
+    test = d.text.WikiText2(root='data/wikitext-2', segment='test')
     train_freq, val_freq, test_freq = [get_frequencies(x) for x in [train, val, test]]
     assert len(train) == 59306, len(train)
     assert len(train_freq) == 33279, len(train_freq)
@@ -39,10 +39,10 @@ def test_wikitext2():
     assert len(test_freq) == 14144, len(test_freq)
     assert test_freq['English'] == 33, test_freq['English']
     assert len(train[0][0]) == 35, len(train[0][0])
-    test_no_pad = d.text.lm.WikiText2(root='data/wikitext-2', segment='test', pad=None)
+    test_no_pad = d.text.WikiText2(root='data/wikitext-2', segment='test', pad=None)
     assert len(test_no_pad) == 6974, len(test_no_pad)
 
-    train_paragraphs = d.text.lm.WikiText2(root='data/wikitext-2', segment='train', seq_len=None)
+    train_paragraphs = d.text.WikiText2(root='data/wikitext-2', segment='train', seq_len=None)
     assert len(train_paragraphs) == 23767, len(train_paragraphs)
     assert len(train_paragraphs[0][0]) != 35, len(train_paragraphs[0][0])
 
@@ -63,9 +63,9 @@ def test_wikitext2():
 
 
 def test_imdb():
-    train = d.text.sentiment.IMDB(root='data/imdb', segment='train')
-    test = d.text.sentiment.IMDB(root='data/imdb', segment='test')
-    unsup = d.text.sentiment.IMDB(root='data/imdb', segment='unsup')
+    train = d.text.IMDB(root='data/imdb', segment='train')
+    test = d.text.IMDB(root='data/imdb', segment='test')
+    unsup = d.text.IMDB(root='data/imdb', segment='unsup')
     assert len(train) == 25000, len(train)
     assert len(test) == 25000, len(test)
     assert len(unsup) == 50000, len(unsup)
