@@ -84,7 +84,7 @@ def _find_param(block, full_param_name, local_param_name):
 
     return param_dict_results, reg_dict_results
 
-def get_rnn_cell(mode, num_layers, input_dim, hidden_dim,
+def get_rnn_cell(mode, num_layers, input_size, hidden_dim,
                  dropout, weight_dropout,
                  var_drop_in, var_drop_state, var_drop_out):
     """create rnn cell given specs"""
@@ -92,13 +92,13 @@ def get_rnn_cell(mode, num_layers, input_dim, hidden_dim,
     with rnn_cell.name_scope():
         for i in range(num_layers):
             if mode == 'rnn_relu':
-                cell = rnn.RNNCell(hidden_dim, 'relu', input_size=input_dim)
+                cell = rnn.RNNCell(hidden_dim, 'relu', input_size=input_size)
             elif mode == 'rnn_tanh':
-                cell = rnn.RNNCell(hidden_dim, 'tanh', input_size=input_dim)
+                cell = rnn.RNNCell(hidden_dim, 'tanh', input_size=input_size)
             elif mode == 'lstm':
-                cell = rnn.LSTMCell(hidden_dim, input_size=input_dim)
+                cell = rnn.LSTMCell(hidden_dim, input_size=input_size)
             elif mode == 'gru':
-                cell = rnn.GRUCell(hidden_dim, input_size=input_dim)
+                cell = rnn.GRUCell(hidden_dim, input_size=input_size)
             if var_drop_in + var_drop_state + var_drop_out != 0:
                 cell = contrib.rnn.VariationalDropoutCell(cell,
                                                           var_drop_in,
@@ -115,20 +115,20 @@ def get_rnn_cell(mode, num_layers, input_dim, hidden_dim,
     return rnn_cell
 
 
-def get_rnn_layer(mode, num_layers, input_dim, hidden_dim, dropout, weight_dropout):
+def get_rnn_layer(mode, num_layers, input_size, hidden_dim, dropout, weight_dropout):
     """create rnn layer given specs"""
     if mode == 'rnn_relu':
         block = rnn.RNN(hidden_dim, 'relu', num_layers, dropout=dropout,
-                        input_size=input_dim)
+                        input_size=input_size)
     elif mode == 'rnn_tanh':
         block = rnn.RNN(hidden_dim, num_layers, dropout=dropout,
-                        input_size=input_dim)
+                        input_size=input_size)
     elif mode == 'lstm':
         block = rnn.LSTM(hidden_dim, num_layers, dropout=dropout,
-                         input_size=input_dim)
+                         input_size=input_size)
     elif mode == 'gru':
         block = rnn.GRU(hidden_dim, num_layers, dropout=dropout,
-                        input_size=input_dim)
+                        input_size=input_size)
     if weight_dropout:
         apply_weight_drop(block, 'h2h_weight', rate=weight_dropout)
 

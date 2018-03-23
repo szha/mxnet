@@ -19,8 +19,10 @@ __all__ = ['AWDRNN', 'SimpleRNN', 'awd_lstm_lm_1150',
            'simple_lstm_lm_650', 'simple_lstm_lm_1500']
 
 import os
+import warnings
 
 from .base import StatefulBlock, get_rnn_layer, apply_weight_drop
+from ..model_store import get_model_file
 from ...data.text.utils import _load_pretrained_vocab
 from ... import Block, nn
 from .... import init, nd, cpu
@@ -28,14 +30,14 @@ from .... import init, nd, cpu
 
 class AWDRNN(StatefulBlock):
     """AWD language model."""
-    def __init__(self, mode, vocab_size, embed_dim, hidden_dim, num_layers,
+    def __init__(self, mode, vocab_size, embed_size, hidden_size, num_layers,
                  tie_weights=False, dropout=0.5, weight_drop=0, drop_h=0.5, drop_i=0.5,
                  **kwargs):
         super(AWDRNN, self).__init__(**kwargs)
         self._mode = mode
         self._vocab_size = vocab_size
-        self._embed_dim = embed_dim
-        self._hidden_dim = hidden_dim
+        self._embed_size = embed_size
+        self._hidden_size = hidden_size
         self._num_layers = num_layers
         self._dropout = dropout
         self._drop_h = drop_h
@@ -51,7 +53,7 @@ class AWDRNN(StatefulBlock):
     def _get_embedding(self):
         embedding = nn.HybridSequential()
         with embedding.name_scope():
-            embedding_block = nn.Embedding(self._vocab_size, self._embed_dim,
+            embedding_block = nn.Embedding(self._vocab_size, self._embed_size,
                                            weight_initializer=init.Uniform(0.1))
             embedding.add(embedding_block)
             if self._drop_i:
@@ -62,10 +64,10 @@ class AWDRNN(StatefulBlock):
         encoder = nn.Sequential()
         with encoder.name_scope():
             for l in range(self._num_layers):
-                encoder.add(get_rnn_layer(self._mode, 1, self._embed_dim if l == 0 else
-                                          self._hidden_dim, self._hidden_dim if
+                encoder.add(get_rnn_layer(self._mode, 1, self._embed_size if l == 0 else
+                                          self._hidden_size, self._hidden_size if
                                           l != self._num_layers - 1 or not self._tie_weights
-                                          else self._embed_dim, 0, self._weight_drop))
+                                          else self._embed_size, 0, self._weight_drop))
         return encoder
 
     def _get_decoder(self):
@@ -94,16 +96,17 @@ class AWDRNN(StatefulBlock):
 
 class SimpleRNN(StatefulBlock):
     """Simple RNN language model."""
-    def __init__(self, mode, vocab_size, embed_dim, hidden_dim,
+    def __init__(self, mode, vocab_size, embed_size, hidden_size,
                  num_layers, dropout=0.5, tie_weights=False, **kwargs):
         if tie_weights:
-            assert embed_dim == hidden_dim, "Embedding dimension must be equal to " \
-                                            "hidden dimension in order to tie weights. " \
-                                            "Got: emb: {}, hid: {}.".format(embed_dim, hidden_dim)
+            assert embed_size == hidden_size, "Embedding dimension must be equal to " \
+                                              "hidden dimension in order to tie weights. " \
+                                              "Got: emb: {}, hid: {}.".format(embed_size,
+                                                                              hidden_size)
         super(SimpleRNN, self).__init__(**kwargs)
         self._mode = mode
-        self._embed_dim = embed_dim
-        self._hidden_dim = hidden_dim
+        self._embed_size = embed_size
+        self._hidden_size = hidden_size
         self._num_layers = num_layers
         self._dropout = dropout
         self._tie_weights = tie_weights
@@ -117,15 +120,15 @@ class SimpleRNN(StatefulBlock):
     def _get_embedding(self):
         embedding = nn.HybridSequential()
         with embedding.name_scope():
-            embedding.add(nn.Embedding(self._vocab_size, self._embed_dim,
+            embedding.add(nn.Embedding(self._vocab_size, self._embed_size,
                                        weight_initializer=init.Uniform(0.1)))
             if self._dropout:
                 embedding.add(nn.Dropout(self._dropout))
         return embedding
 
     def _get_encoder(self):
-        return get_rnn_layer(self._mode, self._num_layers, self._embed_dim,
-                             self._hidden_dim, self._dropout, 0)
+        return get_rnn_layer(self._mode, self._num_layers, self._embed_size,
+                             self._hidden_size, self._dropout, 0)
 
     def _get_decoder(self):
         if self._tie_weights:
@@ -146,55 +149,51 @@ class SimpleRNN(StatefulBlock):
         return out, state
 
 
-def _get_simple_rnn(embed_dim, hidden_dim, vocab=None,
-                    pretrained=None, ctx=cpu(), root=os.path.join('~', '.mxnet', 'models'),
-                    model_name=None, **kwargs):
-
-    if pretrained:
-        model_name = model_name if not pretrained else '{}_{}'.format(model_name, pretrained)
-        vocab = _load_pretrained_vocab(model_name, root)
+def _load_vocab(dataset_name, vocab, root):
+    if dataset_name:
+        if vocab is not None:
+            warnings.warn('Both dataset_name and vocab are specified. Loading vocab for dataset. '
+                          'vocab will be ignored.')
+        vocab = _load_pretrained_vocab(dataset_name, root)
     else:
-        assert vocab is not None, "Must specify vocab if not loading from pretrained models."
+        assert vocab is not None, "Must specify vocab if not loading from predefined datasets."
+    return vocab
 
-    net = SimpleRNN(vocab_size=len(vocab), embed_dim=embed_dim, hidden_dim=hidden_dim,
-                    **kwargs)
+
+def _load_pretrained_params(net, model_name, root, ctx):
+    model_file = get_model_file(model_name, root=root)
+    net.load_params(model_file, ctx=ctx)
+
+
+def _get_rnn_model(model_cls, model_name, dataset_name, vocab, pretrained, ctx, root, **kwargs):
+    if 'vocab_size' not in kwargs:
+        vocab = _load_vocab(dataset_name, vocab, root)
+        kwargs['vocab_size'] = len(vocab)
+    net = model_cls(**kwargs)
     if pretrained:
-        from ..model_store import get_model_file
-        model_file = get_model_file(model_name, root=root)
-        net.load_params(model_file, ctx=ctx)
+        _load_pretrained_params(net, model_name, root, ctx)
     return net, vocab
 
 
-def _get_awd_rnn(embed_dim, hidden_dim, vocab=None,
-                 pretrained=None, ctx=cpu(), root=os.path.join('~', '.mxnet', 'models'),
-                 model_name=None, **kwargs):
-    if pretrained:
-        model_name = model_name if not pretrained else '{}_{}'.format(model_name, pretrained)
-        vocab = _load_pretrained_vocab(model_name, root)
-    else:
-        assert vocab is not None, "Must specify vocab if not loading from pretrained models."
-
-    net = AWDRNN(vocab_size=len(vocab), embed_dim=embed_dim, hidden_dim=hidden_dim, **kwargs)
-    if pretrained:
-        from ..model_store import get_model_file
-        model_file = get_model_file(model_name, root=root)
-        net.load_params(model_file, ctx=ctx)
-    return net, vocab
-
-
-def awd_lstm_lm_1150(**kwargs):
+def awd_lstm_lm_1150(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
+                     root=os.path.join('~', '.mxnet', 'models'), **kwargs):
     r"""3-layer LSTM language model with weight-drop, variational dropout, and tied weights.
 
     Embedding size is 400, and hidden layer size is 1150.
 
     Parameters
     ----------
-    vocab : gluon.text.Vocabulary, default None
+    dataset_name : str or None, default None
+        The dataset name on which the pretrained model is trained.
+        Options are 'wikitext-2'. If specified, then the returned vocabulary is extracted from
+        the training set of the dataset.
+        If None, then vocab is required, for specifying embedding weight size, and is directly
+        returned.
+    vocab : gluon.text.Vocabulary or None, default None
         Vocabulary object to be used with the language model.
-        Required when not loading from pretrained models.
-    pretrained : str or None, default None
-        The dataset name on which the pretrained model is trained. Options are 'wikitext2'.
-        If None, then no pretrained weights are loaded.
+        Required when dataset_name is not specified.
+    pretrained : bool, default False
+        Whether to load the pretrained weights for model.
     ctx : Context, default CPU
         The context in which to load the pretrained weights.
     root : str, default '~/.mxnet/models'
@@ -202,9 +201,10 @@ def awd_lstm_lm_1150(**kwargs):
 
     Returns
     -------
-    Block, gluon.text.Vocabulary
+    gluon.Block, gluon.text.Vocabulary
     """
-    predefined_args = {'model_name': 'awd_lstm_lm_1150',
+    predefined_args = {'embed_size': 400,
+                       'hidden_size': 1150,
                        'mode': 'lstm',
                        'num_layers': 3,
                        'tie_weights': True,
@@ -215,22 +215,29 @@ def awd_lstm_lm_1150(**kwargs):
     assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
-    return _get_awd_rnn(400, 1150, **kwargs)
+    return _get_rnn_model(AWDRNN, 'awd_lstm_lm_1150', dataset_name, vocab, pretrained,
+                          ctx, root, **kwargs)
 
 
-def simple_lstm_lm_650(**kwargs):
+def simple_lstm_lm_650(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
+                       root=os.path.join('~', '.mxnet', 'models'), **kwargs):
     r"""Simple 2-layer LSTM language model with tied embedding and output weights.
 
     Both embedding and hidden dimensions are 650.
 
     Parameters
     ----------
-    vocab : gluon.text.Vocabulary, default None
+    dataset_name : str or None, default None
+        The dataset name on which the pretrained model is trained.
+        Options are 'wikitext-2'. If specified, then the returned vocabulary is extracted from
+        the training set of the dataset.
+        If None, then vocab is required, for specifying embedding weight size, and is directly
+        returned.
+    vocab : gluon.text.Vocabulary or None, default None
         Vocabulary object to be used with the language model.
-        Required when not loading from pretrained models.
-    pretrained : str or None, default None
-        The dataset name on which the pretrained model is trained. Options are 'wikitext2'.
-        If None, then no pretrained weights are loaded.
+        Required when dataset_name is not specified.
+    pretrained : bool, default False
+        Whether to load the pretrained weights for model.
     ctx : Context, default CPU
         The context in which to load the pretrained weights.
     root : str, default '~/.mxnet/models'
@@ -238,9 +245,10 @@ def simple_lstm_lm_650(**kwargs):
 
     Returns
     -------
-    Block, gluon.text.Vocabulary
+    gluon.Block, gluon.text.Vocabulary
     """
-    predefined_args = {'model_name': 'simple_lstm_lm_650',
+    predefined_args = {'embed_size': 650,
+                       'hidden_size': 650,
                        'mode': 'lstm',
                        'num_layers': 2,
                        'tie_weights': True,
@@ -248,22 +256,29 @@ def simple_lstm_lm_650(**kwargs):
     assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
-    return _get_simple_rnn(650, 650, **kwargs)
+    return _get_rnn_model(SimpleRNN, 'simple_lstm_lm_650', dataset_name, vocab, pretrained,
+                          ctx, root, **kwargs)
 
 
-def simple_lstm_lm_1500(**kwargs):
+def simple_lstm_lm_1500(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
+                        root=os.path.join('~', '.mxnet', 'models'), **kwargs):
     r"""Simple 2-layer LSTM language model with tied embedding and output weights.
 
     Both embedding and hidden dimensions are 1500.
 
     Parameters
     ----------
-    vocab : gluon.text.Vocabulary, default None
+    dataset_name : str or None, default None
+        The dataset name on which the pretrained model is trained.
+        Options are 'wikitext-2'. If specified, then the returned vocabulary is extracted from
+        the training set of the dataset.
+        If None, then vocab is required, for specifying embedding weight size, and is directly
+        returned.
+    vocab : gluon.text.Vocabulary or None, default None
         Vocabulary object to be used with the language model.
-        Required when not loading from pretrained models.
-    pretrained : str or None, default None
-        The dataset name on which the pretrained model is trained. Options are 'wikitext2'.
-        If None, then no pretrained weights are loaded.
+        Required when dataset_name is not specified.
+    pretrained : bool, default False
+        Whether to load the pretrained weights for model.
     ctx : Context, default CPU
         The context in which to load the pretrained weights.
     root : str, default '~/.mxnet/models'
@@ -271,9 +286,10 @@ def simple_lstm_lm_1500(**kwargs):
 
     Returns
     -------
-    Block, gluon.text.Vocabulary
+    gluon.Block, gluon.text.Vocabulary
     """
-    predefined_args = {'model_name': 'simple_lstm_lm_1500',
+    predefined_args = {'embed_size': 1500,
+                       'hidden_size': 1500,
                        'mode': 'lstm',
                        'num_layers': 2,
                        'tie_weights': True,
@@ -281,4 +297,5 @@ def simple_lstm_lm_1500(**kwargs):
     assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
-    return _get_simple_rnn(1500, 1500, **kwargs)
+    return _get_rnn_model(SimpleRNN, 'simple_lstm_lm_1500', dataset_name, vocab, pretrained,
+                          ctx, root, **kwargs)
