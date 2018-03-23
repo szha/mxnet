@@ -98,10 +98,13 @@ struct NodeEntryVectorEqual {
   }
 };
 
+typedef typename std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry,
+                                    NodeEntryVectorHash, NodeEntryVectorEqual> ConcatNodeEntryMap;
+
 nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
                                  uint32_t input_index,
                                  const std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>>& node_map,
-                                 const std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual>& concat_map) {
+                                 const ConcatNodeEntryMap& concat_map) {
   size_t num_nodes = op_ptrs.size();
   size_t in_batch_axis = 0; // TODO get batch axis from nodes for each input index
 
@@ -168,10 +171,10 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // generate new graph
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
-  std::unordered_map<std::vector<nnvm::NodeEntry>, nnvm::NodeEntry, NodeEntryVectorHash, NodeEntryVectorEqual> concat_map;
+  ConcatNodeEntryMap concat_map;
   for (uint32_t istep = 0; istep < forward_steps.size(); istep++) {
 
-    const std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>> step = forward_steps[istep];
+    const std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>>& step = forward_steps[istep];
     for (const std::pair<uint64_t, std::vector<nnvm::NodePtr>> step_ops : step) {
 
       uint64_t op_sign = step_ops.first;
