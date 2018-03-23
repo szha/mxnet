@@ -212,7 +212,7 @@ def awd_lstm_lm_1150(**kwargs):
                        'weight_drop': 0.5,
                        'drop_h': 0.3,
                        'drop_i': 0.65}
-    assert all(k not in kwargs for k in predefined_args.keys()), \
+    assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
     return _get_awd_rnn(400, 1150, **kwargs)
@@ -245,7 +245,7 @@ def simple_lstm_lm_650(**kwargs):
                        'num_layers': 2,
                        'tie_weights': True,
                        'dropout': 0.5}
-    assert all(k not in kwargs for k in predefined_args.keys()), \
+    assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
     return _get_simple_rnn(650, 650, **kwargs)
@@ -278,7 +278,7 @@ def simple_lstm_lm_1500(**kwargs):
                        'num_layers': 2,
                        'tie_weights': True,
                        'dropout': 0.65}
-    assert all(k not in kwargs for k in predefined_args.keys()), \
+    assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
     return _get_simple_rnn(1500, 1500, **kwargs)

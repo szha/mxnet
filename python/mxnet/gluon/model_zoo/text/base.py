@@ -18,7 +18,7 @@
 __all__ = ['StatefulBlock', 'get_rnn_layer', 'get_rnn_cell',
            'RNNCellLayer', 'apply_weight_drop', 'WeightDropParameter']
 
-from ... import Block, HybridBlock, Parameter, contrib, nn, rnn
+from ... import Block, HybridBlock, Parameter, contrib, rnn
 from .... import nd
 
 class StatefulBlock(Block):

@@ -331,7 +331,8 @@ class Vocabulary(object):
 
     def json_serialize(self):
         if self._embedding is not None:
-            warnings.warn('Serialization of attached embedding is not supported. Please save separately')
+            warnings.warn('Serialization of attached embedding is not supported. '
+                          'Please save separately')
         vocab_dict = {}
         vocab_dict['idx_to_token'] = self._idx_to_token
         vocab_dict['token_to_idx'] = self._token_to_idx
