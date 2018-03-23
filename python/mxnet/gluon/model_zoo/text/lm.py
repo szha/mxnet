@@ -21,10 +21,10 @@ __all__ = ['AWDRNN', 'SimpleRNN', 'awd_lstm_lm_1150',
 import os
 import warnings
 
-from .base import StatefulBlock, get_rnn_layer, apply_weight_drop
+from .base import StatefulBlock, get_rnn_layer
 from ..model_store import get_model_file
 from ...data.text.utils import _load_pretrained_vocab
-from ... import Block, nn
+from ... import nn
 from .... import init, nd, cpu
 
 
