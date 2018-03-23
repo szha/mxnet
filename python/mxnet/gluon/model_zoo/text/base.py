@@ -15,10 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 """Building blocks and utility for models."""
+__all__ = ['StatefulBlock', 'get_rnn_layer', 'get_rnn_cell',
+           'RNNCellLayer', 'apply_weight_drop', 'WeightDropParameter']
 
 from ... import Block, HybridBlock, Parameter, contrib, nn, rnn
 from .... import nd
 
+class StatefulBlock(Block):
+    def __init__(self, **kwargs):
+        super(StatefulBlock, self).__init__(**kwargs)
+
+    def begin_state(self, *args, **kwargs):
+        raise NotImplementedError()
 
 def apply_weight_drop(block, local_param_name, rate, axes=(),
                       weight_dropout_mode='training'):
@@ -130,7 +138,7 @@ def get_rnn_layer(mode, num_layers, input_dim, hidden_dim, dropout, weight_dropo
 class RNNCellLayer(Block):
     """A block that takes an rnn cell and makes it act like rnn layer."""
     def __init__(self, rnn_cell, layout='TNC', **kwargs):
-        super(RNNCellBlock, self).__init__(**kwargs)
+        super(RNNCellLayer, self).__init__(**kwargs)
         self.cell = rnn_cell
         assert layout == 'TNC' or layout == 'NTC', \
             "Invalid layout %s; must be one of ['TNC' or 'NTC']"%layout

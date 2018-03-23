@@ -22,7 +22,7 @@ import math
 import mxnet as mx
 from mxnet import gluon, autograd
 from mxnet.gluon import data, text
-from mxnet.gluon.model_zoo.text.lm import SimpleRNNModel, AWDLSTM
+from mxnet.gluon.model_zoo.text.lm import SimpleRNN, AWDRNN
 
 parser = argparse.ArgumentParser(description='MXNet Autograd RNN/LSTM Language Model on Wikitext-2.')
 parser.add_argument('--model', type=str, default='lstm',
@@ -47,9 +47,9 @@ parser.add_argument('--dropout', type=float, default=0.4,
                     help='dropout applied to layers (0 = no dropout)')
 parser.add_argument('--dropout_h', type=float, default=0.3,
                     help='dropout applied to hidden layer (0 = no dropout)')
-parser.add_argument('--dropout_i', type=float, default=0.4,
+parser.add_argument('--dropout_i', type=float, default=0.65,
                     help='dropout applied to input layer (0 = no dropout)')
-parser.add_argument('--weight_dropout', type=float, default=0.65,
+parser.add_argument('--weight_dropout', type=float, default=0.5,
                     help='weight dropout applied to h2h weight matrix (0 = no weight dropout)')
 parser.add_argument('--tied', action='store_true',
                     help='tie the word embedding and softmax weights')
@@ -121,11 +121,11 @@ test_data = gluon.data.DataLoader(test_dataset.transform(index_tokens),
 ntokens = len(vocab)
 
 if args.weight_dropout:
-    model = AWDLSTM(args.model, len(vocab), args.emsize, args.nhid, args.nlayers,
-                    args.tied, args.dropout, args.weight_dropout, args.dropout_h, args.dropout_i)
+    model = AWDRNN(args.model, len(vocab), args.emsize, args.nhid, args.nlayers,
+                   args.tied, args.dropout, args.weight_dropout, args.dropout_h, args.dropout_i)
 else:
-    model = SimpleRNNModel(args.model, len(vocab), args.emsize, args.nhid, args.nlayers,
-                           args.tied, args.dropout)
+    model = SimpleRNN(args.model, len(vocab), args.emsize, args.nhid, args.nlayers,
+                      args.tied, args.dropout)
 
 model.initialize(mx.init.Xavier(), ctx=context)
 

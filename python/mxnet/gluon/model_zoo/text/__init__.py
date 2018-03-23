@@ -27,17 +27,15 @@ You can construct a model with random weights by calling its constructor:
 .. code::
 
     from mxnet.gluon.model_zoo import text
-    # TODO
-    awd = text.awd_variant()
+    awd, vocab = text.awd_lstm_lm_1150(vocab)
 
 We provide pre-trained models for all the listed models.
-These models can constructed by passing ``pretrained=True``:
+These models can constructed by passing ``pretrained='DatasetName'``:
 
 .. code::
 
     from mxnet.gluon.model_zoo import text
-    # TODO
-    awd = text.awd_variant(pretrained=True)
+    awd, vocab = text.awd_lstm_lm_1150(pretrained='wikitext-2')
 
 .. _AWD: https://arxiv.org/abs/1404.5997
 """
@@ -46,6 +44,8 @@ from .base import *
 
 from . import lm
 
+from .lm import simple_lstm_lm_650, simple_lstm_lm_1500, awd_lstm_lm_1150
+
 def get_model(name, **kwargs):
     """Returns a pre-defined model by name
 
@@ -53,10 +53,12 @@ def get_model(name, **kwargs):
     ----------
     name : str
         Name of the model.
-    pretrained : bool
-        Whether to load the pretrained weights for model.
-    classes : int
-        Number of classes for the output layer.
+    vocab : gluon.text.Vocabulary, default None
+        Vocabulary object to be used with the language model.
+        Required when not loading from pretrained models.
+    pretrained : str or None, default None
+        The dataset name on which the pretrained model is trained. Options are 'wikitext2'.
+        If None, then no pretrained weights are loaded.
     ctx : Context, default CPU
         The context in which to load the pretrained weights.
     root : str, default '~/.mxnet/models'
@@ -67,7 +69,9 @@ def get_model(name, **kwargs):
     HybridBlock
         The model.
     """
-    #models = {'awd_variant': awd_variant}
+    models = {'simple_lstm_lm_650': simple_lstm_lm_650,
+              'simple_lstm_lm_1500': simple_lstm_lm_1500,
+              'awd_lstm_lm_1150': awd_lstm_lm_1150}
     name = name.lower()
     if name not in models:
         raise ValueError(
