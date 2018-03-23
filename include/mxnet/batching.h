@@ -53,6 +53,8 @@ class DBatchEngine {
 
   void Fresh() {
     graphs_.clear();
+    entry_arr_.clear();
+    new_entry_arr_.clear();
   }
 
   void RecordArray(const NDArray& arr) {
@@ -82,6 +84,7 @@ class DBatchEngine {
 #endif
   std::vector<nnvm::Graph> graphs_;
   nnvm::NodeEntryMap<NDArray> entry_arr_;
+  nnvm::NodeEntryMap<NDArray> new_entry_arr_;
 
 
   nnvm::Graph BatchGraphs(const std::vector<nnvm::Graph>& graphs);
