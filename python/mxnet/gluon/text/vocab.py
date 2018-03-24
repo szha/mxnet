@@ -339,3 +339,13 @@ class Vocabulary(object):
         vocab_dict['reserved_tokens'] = self._reserved_tokens
         vocab_dict['unknown_token'] = self._unknown_token
         return json.dumps(vocab_dict)
+
+    @staticmethod
+    def json_deserialize(json_str):
+        vocab = Vocabulary()
+        vocab_dict = json.loads(json_str)
+        vocab._idx_to_token = vocab_dict.get('idx_to_token')
+        vocab._token_to_idx = vocab_dict.get('token_to_idx')
+        vocab._reserved_tokens = vocab_dict.get('reserved_tokens')
+        vocab._unknown_token = vocab_dict.get('unknown_token')
+        return vocab

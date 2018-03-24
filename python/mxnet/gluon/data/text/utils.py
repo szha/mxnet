@@ -20,7 +20,6 @@
 
 """Utility functions."""
 
-import json
 import os
 
 from ...text import Vocabulary
@@ -126,12 +125,6 @@ def _load_pretrained_vocab(name, root=os.path.join('~', '.mxnet', 'models')):
     os.remove(zip_file_path)
 
     if check_sha1(file_path, sha1_hash):
-        vocab_dict = json.load(open(file_path, "rb"))
-        vocab = Vocabulary()
-        vocab._idx_to_token = vocab_dict.get('idx_to_token')
-        vocab._token_to_idx = vocab_dict.get('token_to_idx')
-        vocab._reserved_tokens = vocab_dict.get('reserved_tokens')
-        vocab._unknown_token = vocab_dict.get('unknown_token')
-        return vocab
+        return Vocabulary.json_deserialize(open(file_path, "rb").read())
     else:
         raise ValueError('Downloaded file has different hash. Please try again.')

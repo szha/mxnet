@@ -61,15 +61,16 @@ def test_text_models():
     val = mx.gluon.data.text.WikiText2(root='data/wikitext-2', segment='val')
     val_freq = get_frequencies(val)
     vocab = mx.gluon.text.vocab.Vocabulary(val_freq)
-    text_models = ['simple_lstm_lm_650', 'simple_lstm_lm_1500', 'awd_lstm_lm_1150']
+    text_models = ['standard_lstm_lm_650', 'standard_lstm_lm_1500', 'awd_lstm_lm_1150']
     pretrained_to_test = {}
 
     for model_name in text_models:
         eprint('testing forward for %s' % model_name)
-        test_pretrain = pretrained_to_test.get(model_name)
-        model, _ = get_text_model(model_name, vocab=vocab, pretrained=test_pretrain, root='model/')
+        pretrained_dataset = pretrained_to_test.get(model_name)
+        model, _ = get_text_model(model_name, vocab=vocab, dataset_name=pretrained_dataset,
+                                  pretrained=pretrained_dataset is not None, root='model/')
         print(model)
-        if not test_pretrain:
+        if not pretrained_dataset:
             model.collect_params().initialize()
         output, state = model(mx.nd.arange(330).reshape(33, 10))
         output.wait_to_read()

@@ -15,8 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Language models."""
-__all__ = ['AWDRNN', 'SimpleRNN', 'awd_lstm_lm_1150',
-           'simple_lstm_lm_650', 'simple_lstm_lm_1500']
+__all__ = ['AWDRNN', 'StandardRNN', 'awd_lstm_lm_1150',
+           'standard_lstm_lm_650', 'standard_lstm_lm_1500']
 
 import os
 import warnings
@@ -94,8 +94,8 @@ class AWDRNN(StatefulBlock):
         return out, out_states
 
 
-class SimpleRNN(StatefulBlock):
-    """Simple RNN language model."""
+class StandardRNN(StatefulBlock):
+    """Standard RNN language model."""
     def __init__(self, mode, vocab_size, embed_size, hidden_size,
                  num_layers, dropout=0.5, tie_weights=False, **kwargs):
         if tie_weights:
@@ -103,7 +103,7 @@ class SimpleRNN(StatefulBlock):
                                               "hidden dimension in order to tie weights. " \
                                               "Got: emb: {}, hid: {}.".format(embed_size,
                                                                               hidden_size)
-        super(SimpleRNN, self).__init__(**kwargs)
+        super(StandardRNN, self).__init__(**kwargs)
         self._mode = mode
         self._embed_size = embed_size
         self._hidden_size = hidden_size
@@ -166,9 +166,8 @@ def _load_pretrained_params(net, model_name, root, ctx):
 
 
 def _get_rnn_model(model_cls, model_name, dataset_name, vocab, pretrained, ctx, root, **kwargs):
-    if 'vocab_size' not in kwargs:
-        vocab = _load_vocab(dataset_name, vocab, root)
-        kwargs['vocab_size'] = len(vocab)
+    vocab = _load_vocab(dataset_name, vocab, root)
+    kwargs['vocab_size'] = len(vocab)
     net = model_cls(**kwargs)
     if pretrained:
         _load_pretrained_params(net, model_name, root, ctx)
@@ -219,9 +218,9 @@ def awd_lstm_lm_1150(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
                           ctx, root, **kwargs)
 
 
-def simple_lstm_lm_650(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
-                       root=os.path.join('~', '.mxnet', 'models'), **kwargs):
-    r"""Simple 2-layer LSTM language model with tied embedding and output weights.
+def standard_lstm_lm_650(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
+                         root=os.path.join('~', '.mxnet', 'models'), **kwargs):
+    r"""Standard 2-layer LSTM language model with tied embedding and output weights.
 
     Both embedding and hidden dimensions are 650.
 
@@ -256,13 +255,13 @@ def simple_lstm_lm_650(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(
     assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
-    return _get_rnn_model(SimpleRNN, 'simple_lstm_lm_650', dataset_name, vocab, pretrained,
+    return _get_rnn_model(StandardRNN, 'standard_lstm_lm_650', dataset_name, vocab, pretrained,
                           ctx, root, **kwargs)
 
 
-def simple_lstm_lm_1500(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
-                        root=os.path.join('~', '.mxnet', 'models'), **kwargs):
-    r"""Simple 2-layer LSTM language model with tied embedding and output weights.
+def standard_lstm_lm_1500(dataset_name=None, vocab=None, pretrained=False, ctx=cpu(),
+                          root=os.path.join('~', '.mxnet', 'models'), **kwargs):
+    r"""Standard 2-layer LSTM language model with tied embedding and output weights.
 
     Both embedding and hidden dimensions are 1500.
 
@@ -297,5 +296,5 @@ def simple_lstm_lm_1500(dataset_name=None, vocab=None, pretrained=False, ctx=cpu
     assert all(k not in kwargs for k in predefined_args), \
            "Cannot override predefined model settings."
     kwargs.update(predefined_args)
-    return _get_rnn_model(SimpleRNN, 'simple_lstm_lm_1500', dataset_name, vocab, pretrained,
+    return _get_rnn_model(StandardRNN, 'standard_lstm_lm_1500', dataset_name, vocab, pretrained,
                           ctx, root, **kwargs)
