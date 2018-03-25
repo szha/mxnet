@@ -300,6 +300,7 @@ void Imperative::RunGraph(
   for (size_t i = node_start; i < node_end; ++i) {
     LOG(INFO) << "execute node " << i;
     const nnvm::IndexedGraph::Node& node = idx[i];
+    if (node.source->is_variable()) LOG(INFO) << "is a variable node";
     if (node.source->op() == nullptr) continue;
     auto num_outputs = node.source->num_outputs();
     ndinputs.clear();

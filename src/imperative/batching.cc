@@ -399,6 +399,7 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
   // reference count for kNullOp, default to 1 to avoid any null op
   // TODO(haibin) initialize with 0 and correctly calculate ref_counts
   std::vector<uint32_t> ref_count(buff.size(), 1);
+  // each op has a state
   std::vector<OpStatePtr> states;
   std::vector<NDArray*> arrays;
   arrays.reserve(buff.size());
@@ -406,38 +407,53 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
   // TODO(haibin) support create_graph && retain_graph for 2nd order grads
   // const bool create_graph = false;
   const bool retain_graph = false;
-
-  {
-    states.reserve(num_forward_nodes);
-    for (size_t i = 0; i < num_forward_nodes; ++i) {
-      const AGInfo& info = dmlc::get<AGInfo>(idx[i].source->info);
-      states.emplace_back(info.state);
-      // TODO(haibin) use old new graph map to find the NDArrays
-      for (size_t j = 0; j < info.outputs.size(); ++j) {
-        size_t eid = idx.entry_id(i, j);
-        if (info.outputs[j].is_none()) {
-          LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
-                    << i << "'s " << j << "th output = none";
-        } else {
-          LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
-                    << i << "'s " << j << "th output = " << info.outputs[j].var();
-        }
-        arrays[eid] = const_cast<NDArray*>(&(info.outputs[j]));
-
-        if (retain_graph || info.grad_req != kNullOp) ref_count[eid] = 1;
-      }
-    }
-    for (size_t i = 0; i < ograd_entries.size(); ++i) {
-      if (!idx.exist(ograd_entries[i].node.get())) {
-        LOG(INFO) << i << "the ograd entry doesn't exist. continue.";
-        continue;
-      }
-      AGInfo& info = AGInfo::Get(ograd_entries[i].node);
-      LOG(INFO) << "update arrays[" << idx.entry_id(ograd_entries[i])
-                << "] based on ograd_entry " << i << " = " << info.outputs[0].var();
-      arrays[idx.entry_id(ograd_entries[i])] = &info.outputs[0];
-    }
+  // TODO don't use empty op states
+  states.reserve(num_forward_nodes);
+  for (size_t i = 0; i < num_forward_nodes; ++i) {
+    states.emplace_back(OpStatePtr());
   }
+
+  nnvm::DFSVisit(graph.outputs, [&](const nnvm::NodePtr& n){
+    for (NodeEntry e : n->inputs) {
+      auto eid = idx.entry_id(e);
+      if (entry_arr_.find(e) != entry_arr_.end()) {
+        arrays[eid] = const_cast<NDArray*>(&(entry_arr_[e]));
+        LOG(INFO) << "update arrays[" << eid << "]";
+      }
+    }
+  });
+  //{
+  //  //states.reserve(num_forward_nodes);
+  //  for (size_t i = 0; i < num_forward_nodes; ++i) {
+  //    const AGInfo& info = dmlc::get<AGInfo>(idx[i].source->info);
+  //    //states.emplace_back(info.state);
+
+  //    // TODO(haibin) use old new graph map to find the NDArrays
+  //    for (size_t j = 0; j < info.outputs.size(); ++j) {
+  //      size_t eid = idx.entry_id(i, j);
+  //      if (info.outputs[j].is_none()) {
+  //        LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
+  //                  << i << "'s " << j << "th output = none";
+  //      } else {
+  //        LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
+  //                  << i << "'s " << j << "th output = " << info.outputs[j].var();
+  //      }
+  //      arrays[eid] = const_cast<NDArray*>(&(info.outputs[j]));
+
+  //      if (retain_graph || info.grad_req != kNullOp) ref_count[eid] = 1;
+  //    }
+  //  }
+  //  for (size_t i = 0; i < ograd_entries.size(); ++i) {
+  //    if (!idx.exist(ograd_entries[i].node.get())) {
+  //      LOG(INFO) << i << "the ograd entry doesn't exist. continue.";
+  //      continue;
+  //    }
+  //    AGInfo& info = AGInfo::Get(ograd_entries[i].node);
+  //    LOG(INFO) << "update arrays[" << idx.entry_id(ograd_entries[i])
+  //              << "] based on ograd_entry " << i << " = " << info.outputs[0].var();
+  //    arrays[idx.entry_id(ograd_entries[i])] = &info.outputs[0];
+  //  }
+  //}
   for (size_t i = num_forward_outputs; i < graph.outputs.size(); ++i) {
     size_t eid = idx.entry_id(graph.outputs[i]);
     LOG(INFO) << "update arrays[" << eid << "] based on backward_node "
