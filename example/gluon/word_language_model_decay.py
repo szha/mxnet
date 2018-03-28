@@ -97,21 +97,21 @@ nbatch_train = len(train_dataset) // args.batch_size
 train_data = gluon.data.DataLoader(train_dataset.transform(index_tokens),
                                    batch_size=args.batch_size,
                                    sampler=gluon.contrib.data.IntervalSampler(len(train_dataset),
-                                                                              nbatch_train*args.batch_size),
+                                                                              nbatch_train),
                                    last_batch='discard')
 
 nbatch_val = len(val_dataset) // args.batch_size
 val_data = gluon.data.DataLoader(val_dataset.transform(index_tokens),
                                  batch_size=args.batch_size,
                                  sampler=gluon.contrib.data.IntervalSampler(len(val_dataset),
-                                                                            nbatch_val*args.batch_size),
+                                                                            nbatch_val),
                                  last_batch='discard')
 
 nbatch_test = len(test_dataset) // args.batch_size
 test_data = gluon.data.DataLoader(test_dataset.transform(index_tokens),
                                   batch_size=args.batch_size,
                                   sampler=gluon.contrib.data.IntervalSampler(len(test_dataset),
-                                                                             nbatch_test*args.batch_size),
+                                                                             nbatch_test),
                                   last_batch='discard')
 
 
@@ -171,7 +171,7 @@ def train():
     for epoch in range(args.epochs):
         total_L = 0.0
         start_epoch_time = time.time()
-        hiddens = [model.begin_state(args.batch_size//len(context), func=mx.nd.zeros, ctx=ctx) for ctx in context]
+        hiddens = [model.begin_state(args.batch_size, func=mx.nd.zeros, ctx=ctx) for ctx in context]
         for i, (data, target) in enumerate(train_data):
             start_batch_time = time.time()
             data = data.T
@@ -217,6 +217,14 @@ def train():
             test_L = eval(test_data)
             model.collect_params().save(args.save)
             print('test loss %.2f, test ppl %.2f'%(test_L, math.exp(test_L)))
+        else:
+            args.lr = args.lr*0.25
+            print('Learning rate now %f'%(args.lr))
+            trainer._init_optimizer('sgd',
+                                    {'learning_rate': args.lr,
+                                     'momentum': 0,
+                                     'wd': 0})
+            model.collect_params().load(args.save, context)
 
     print('Total training throughput %.2f samples/s'%(
                             (args.batch_size * nbatch_train * args.epochs) / (time.time() - start_train_time)))
