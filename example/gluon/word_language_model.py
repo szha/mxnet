@@ -97,21 +97,21 @@ nbatch_train = len(train_dataset) // args.batch_size
 train_data = gluon.data.DataLoader(train_dataset.transform(index_tokens),
                                    batch_size=args.batch_size,
                                    sampler=gluon.contrib.data.IntervalSampler(len(train_dataset),
-                                                                              nbatch_train),
+                                                                              nbatch_train*args.batch_size),
                                    last_batch='discard')
 
 nbatch_val = len(val_dataset) // args.batch_size
 val_data = gluon.data.DataLoader(val_dataset.transform(index_tokens),
                                  batch_size=args.batch_size,
                                  sampler=gluon.contrib.data.IntervalSampler(len(val_dataset),
-                                                                            nbatch_val),
+                                                                            nbatch_val*args.batch_size),
                                  last_batch='discard')
 
 nbatch_test = len(test_dataset) // args.batch_size
 test_data = gluon.data.DataLoader(test_dataset.transform(index_tokens),
                                   batch_size=args.batch_size,
                                   sampler=gluon.contrib.data.IntervalSampler(len(test_dataset),
-                                                                             nbatch_test),
+                                                                             nbatch_test*args.batch_size),
                                   last_batch='discard')
 
 
