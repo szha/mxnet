@@ -27,8 +27,10 @@
 namespace mxnet {
 #if DMLC_CXX11_THREAD_LOCAL
 thread_local bool DBatchEngine::is_dbatch_ = false;
+thread_local int DBatchEngine::bulk_size_ = 0;
 #else
 MX_THREAD_LOCAL bool DBatchEngine::is_dbatch_ = false;
+MX_THREAD_LOCAL bool DBatchEngine::bulk_size_ = 0;
 #endif
 
 DBatchEngine* DBatchEngine::Get() {
@@ -135,12 +137,13 @@ nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
 
 nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // collect depth
+  bool collect_debug = dmlc::GetEnv("DB_COLLECT_DEBUG", false);
   int max_depth = 0;
   std::unordered_map<nnvm::Node*, int> depth_map;
   std::vector<nnvm::NodeEntry> prev_outputs, all_old_entries;
   for (const nnvm::Graph& g : graphs) {
     const std::vector<nnvm::NodeEntry>& g_outputs = g.outputs;
-    LOG(INFO) << "graph outputs " << g_outputs.size();
+    if (collect_debug) LOG(INFO) << "graph outputs " << g_outputs.size();
     std::copy(g_outputs.begin(), g_outputs.end(), std::inserter(prev_outputs, prev_outputs.end()));
     std::copy(g_outputs.begin(), g_outputs.end(), std::inserter(all_old_entries, all_old_entries.end()));
     nnvm::DFSVisit(g_outputs, [&](const nnvm::NodePtr& n){
@@ -150,14 +153,15 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         int idepth = depth_map.at(e.node.get());
         depth = std::max(depth, idepth+1);
       }
-      LOG(INFO) << "depth of (" << n->attrs.name << "): " << depth;
+      if (collect_debug) LOG(INFO) << "depth of (" << n->attrs.name << "): " << depth;
       depth_map.insert({n.get(), depth});
       max_depth = std::max(depth, max_depth);
     });
   }
-  LOG(INFO) << "total graph outputs " << prev_outputs.size();
-
-  LOG(INFO) << "max depth " << max_depth;
+  if (collect_debug) {
+    LOG(INFO) << "total graph outputs " << prev_outputs.size();
+    LOG(INFO) << "max depth " << max_depth;
+  }
   // depth: sign->node
   std::vector<std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>>> forward_steps;
   forward_steps.resize(max_depth + 1);
@@ -275,7 +279,8 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   nnvm::Graph new_graph;
   new_graph.outputs = new_outputs;
   // Print graph
-  {
+  bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
+  if (rewrite_debug) {
     nnvm::Symbol sym;
     sym.outputs = prev_outputs;
     std::cout << "Full Old Graph: \n";
@@ -289,10 +294,14 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
 }
 
 
-void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
+void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
+  bool exec_debug = dmlc::GetEnv("DB_EXEC_DEBUG", false);
+  LOG(INFO) << "ExecuteGraph";
   using namespace nnvm;
   using namespace imperative;
   using AGInfo = Imperative::AGInfo;
+  nnvm::Graph graph = fwd_graph;
+  auto fwd_outputs = fwd_graph.outputs;
 
   // g is the forward graph
   size_t num_forward_outputs = graph.outputs.size();
@@ -305,8 +314,8 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
   ograds.reserve(num_forward_outputs);
   ograd_entries.reserve(num_forward_outputs);
   for (NodeEntry output_entry : graph.outputs) {
-    auto iter = entry_arr_.find(output_entry);
-    CHECK(iter != entry_arr_.end());
+    auto iter = new_entry_arr_.find(output_entry);
+    CHECK(iter != new_entry_arr_.end()) << " CANNOT FIND graph.outputs";
     const auto& arr = iter->second;
     LOG(INFO) << "graph.outputs var: " << arr.var();
     outputs.push_back(arr);
@@ -368,19 +377,19 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
       node->inputs.push_back(e);
       graph.outputs.push_back(NodeEntry{node, 0, 0});
     } else {
-      LOG(INFO) << "add a backward output";
+      LOG(INFO) << "add a backward output to graph";
       graph.outputs.push_back(e);
     }
   }
   // Print graph
-  {
+  if (exec_debug) {
     Symbol sym;
     sym.outputs = graph.outputs;
-    std::cout << "Full Graph: \n";
+    std::cout << "Full New Forward Backward Graph: \n";
     sym.Print(std::cout);
   }
 
-  // graph execution
+  // prepare execution for fwd bwd graph
   const auto& idx = graph.indexed_graph();
   // get number of nodes used in forward pass
   size_t num_forward_nodes = 0;
@@ -412,13 +421,27 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
   for (size_t i = 0; i < num_forward_nodes; ++i) {
     states.emplace_back(OpStatePtr());
   }
+  // forward output ndarray
+  for (auto e: fwd_outputs) {
+    auto eid = idx.entry_id(e);
+    if (new_entry_arr_.find(e) != new_entry_arr_.end()) {
+      arrays[eid] = const_cast<NDArray*>(&(new_entry_arr_[e]));
+      if (exec_debug) LOG(INFO) << "update arrays[" << eid << "]: " << new_entry_arr_[e].var();
+    } else {
+      if (exec_debug) LOG(INFO) << "entry id " << eid << " not found in new_entry_arr_";
+    }
+  }
 
   nnvm::DFSVisit(graph.outputs, [&](const nnvm::NodePtr& n){
+    auto nid = idx.node_id(n.get());
+    //LOG(INFO) << "visit node " << nid;
     for (NodeEntry e : n->inputs) {
       auto eid = idx.entry_id(e);
-      if (entry_arr_.find(e) != entry_arr_.end()) {
-        arrays[eid] = const_cast<NDArray*>(&(entry_arr_[e]));
-        LOG(INFO) << "update arrays[" << eid << "]";
+      if (new_entry_arr_.find(e) != new_entry_arr_.end()) {
+        arrays[eid] = const_cast<NDArray*>(&(new_entry_arr_[e]));
+        if (exec_debug) LOG(INFO) << "update arrays[" << eid << "]: " << new_entry_arr_[e].var();
+      } else {
+        //LOG(INFO) << "entry id " << eid << " not found in new_entry_arr_";
       }
     }
   });
@@ -443,21 +466,27 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
   //      if (retain_graph || info.grad_req != kNullOp) ref_count[eid] = 1;
   //    }
   //  }
-  //  for (size_t i = 0; i < ograd_entries.size(); ++i) {
-  //    if (!idx.exist(ograd_entries[i].node.get())) {
-  //      LOG(INFO) << i << "the ograd entry doesn't exist. continue.";
-  //      continue;
-  //    }
-  //    AGInfo& info = AGInfo::Get(ograd_entries[i].node);
-  //    LOG(INFO) << "update arrays[" << idx.entry_id(ograd_entries[i])
-  //              << "] based on ograd_entry " << i << " = " << info.outputs[0].var();
-  //    arrays[idx.entry_id(ograd_entries[i])] = &info.outputs[0];
-  //  }
   //}
+
+  for (size_t i = 0; i < ograd_entries.size(); ++i) {
+    if (!idx.exist(ograd_entries[i].node.get())) {
+      LOG(INFO) << i << "the ograd entry doesn't exist. continue.";
+      continue;
+    }
+    AGInfo& info = AGInfo::Get(ograd_entries[i].node);
+    if (exec_debug) {
+      LOG(INFO) << "update arrays[" << idx.entry_id(ograd_entries[i])
+                << "] based on ograd_entry " << i << " = " << info.outputs[0].var();
+    }
+    arrays[idx.entry_id(ograd_entries[i])] = &info.outputs[0];
+  }
+
   for (size_t i = num_forward_outputs; i < graph.outputs.size(); ++i) {
     size_t eid = idx.entry_id(graph.outputs[i]);
-    LOG(INFO) << "update arrays[" << eid << "] based on backward_node "
-              << i << " = " << x_grads[i - num_forward_outputs]->var();
+    if (exec_debug) {
+      LOG(INFO) << "update arrays[" << eid << "] based on backward output "
+                << i << " = " << x_grads[i - num_forward_outputs]->var();
+    }
     arrays[eid] = x_grads[i - num_forward_outputs];
     ref_count[eid] = 1;
   }
@@ -521,7 +550,7 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
     for (size_t j = 0; j < num_outputs; ++j) {
       auto eid = idx.entry_id(i, j);
       if (!arrays[eid]->is_none()) continue;
-      LOG(INFO) << "initialize array[" << eid << "] for node " << i << "'s " << j << "th output.";
+      LOG(INFO) << "initialize array[" << eid << "]";
       if (stypes[eid] == kDefaultStorage) {
         *arrays[eid] = NDArray(shapes[eid], vctx[i], true, dtypes[eid]);
       } else {
@@ -529,9 +558,6 @@ void DBatchEngine::ExecuteGraph(nnvm::Graph& graph) {
                                shapes[eid], vctx[i], true, dtypes[eid]);
       }
     }
-  }
-  for (size_t i = 0; i < idx.num_node_entries(); i++) {
-    LOG(INFO) << "arrays[" << i << "].var() = " << arrays[i]->var();
   }
 
   // Execution

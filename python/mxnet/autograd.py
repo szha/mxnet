@@ -36,6 +36,24 @@ def set_dbatch(is_dbatch):
     check_call(_LIB.MXDBatchSetIsDBatch(
         ctypes.c_int(is_dbatch)))
 
+def set_bulk_size(size):
+    """Set size limit on dynamic batching.
+
+    Parameters
+    ----------
+    size : int
+        Maximum number of graphs that can be bundled in a bulk.
+
+    Returns
+    -------
+    int
+        Previous bulk size.
+    """
+    prev = ctypes.c_int()
+    check_call(_LIB.MXDBatchSetBulkSize(
+        ctypes.c_int(size), ctypes.byref(prev)))
+    return prev.value
+
 def set_recording(is_recording): #pylint: disable=redefined-outer-name
     """Set status to recording/not recording. When recording, graph will be constructed
     for gradient computation.

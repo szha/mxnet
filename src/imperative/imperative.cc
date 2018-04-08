@@ -296,22 +296,26 @@ void Imperative::RunGraph(
   ShapeVector arg_shapes;
   DTypeVector arg_dtypes;
   std::vector<OpReqType> req;
-
+  bool exec_debug = dmlc::GetEnv("MXNET_EXEC_DEBUG", false);
   for (size_t i = node_start; i < node_end; ++i) {
-    LOG(INFO) << "execute node " << i;
     const nnvm::IndexedGraph::Node& node = idx[i];
-    if (node.source->is_variable()) LOG(INFO) << "is a variable node";
+    if (exec_debug && node.source->is_variable()) LOG(INFO) << "Node " << i << " var";
     if (node.source->op() == nullptr) continue;
     auto num_outputs = node.source->num_outputs();
     ndinputs.clear();
     ndinputs.reserve(node.inputs.size());
-    LOG(INFO) << "node " << i << " has " << node.inputs.size() << " inputs";
+    if (exec_debug) LOG(INFO) << "Node " << i << " " << node.source->attrs.op->name;
     for (const auto& j : node.inputs) {
       auto eid = idx.entry_id(j);
-      LOG(INFO) << "check input " << eid;
       ndinputs.emplace_back(arrays[eid]);
       CHECK(!ndinputs.back()->is_none()) << idx[j.node_id].source->attrs.name << " " << j.index;
-      LOG(INFO) << "input " << eid << " added";
+      if (exec_debug) LOG(INFO) << "\tinput " << eid << ": " << arrays[eid]->var();
+    }
+    if (exec_debug) {
+      for (uint32_t index = 0; index < node.source->num_outputs(); ++index) {
+        uint32_t eid = idx.entry_id(i, index);
+        LOG(INFO) << "\toutput " << eid << ": " << arrays[eid]->var();
+      }
     }
     ndoutputs.clear();
     ndoutputs.reserve(num_outputs);
