@@ -10,12 +10,12 @@ mx.random.seed(0)
 np.random.seed(0)
 
 batch_size = 256
-num_batches = 40
+num_batches = 30
 num_inputs = 200
 num_hidden = 50
 num_outputs = 20
 num_examples = batch_size * num_batches
-num_hidden_layers = 10
+num_hidden_layers = 15
 
 def real_fn(X):
     return 2 * X[:, 0] - 3.4 * X[:, 1] + 4.2
@@ -53,7 +53,9 @@ def train(model_ctx, train_iter, epochs, num_examples, network,
                     losses.append(loss)
                 loss.backward()
     	    if (i+1) == batch_size:
-                net_trainer.step(batch_size)
+                # temporarily add ignore_stale_grad=True to profile
+                # the case when execution is skipped
+                net_trainer.step(batch_size, ignore_stale_grad=True)
                 for l in losses:
                     cumulative_loss += nd.mean(l).asscalar()
         print("Epoch %s, loss: %s" % (e, cumulative_loss / num_examples))
@@ -98,8 +100,9 @@ mx.nd.waitall()
 t1 = time.time()
 
 # without batching
-train(model_ctx, train_data, epochs, num_examples, net, trainer, batch_size)
+#train(model_ctx, train_data, epochs, num_examples, net, trainer, batch_size)
 
 mx.nd.waitall()
 t2 = time.time()
-print(t2 - t1, t1 - t0)
+print('w/ batching', t1 - t0)
+print('w/o batching', t2 - t1)

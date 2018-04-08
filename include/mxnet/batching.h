@@ -48,7 +48,8 @@ class DBatchEngine {
     // (TODO szha) batch and execution
     //LOG(INFO) << "batching, graphs size=" << graphs_.size();
     nnvm::Graph g = BatchGraphs(graphs_);
-    ExecuteGraph(g);
+    bool skip_exec = dmlc::GetEnv("DB_SKIP_EXEC", false);
+    if (!skip_exec) ExecuteGraph(g);
   }
 
   void Fresh() {
