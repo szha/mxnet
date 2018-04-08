@@ -350,7 +350,7 @@ int MXAutogradBackwardEx(mx_uint num_output,
   if (DBatchEngine::Get()->is_dbatch()) {
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
-    LOG(INFO) << "Running MXAutogradBackwardEx in batch mode. Graph: ";
+    //LOG(INFO) << "Running MXAutogradBackwardEx in batch mode. Graph: ";
     // sym.Print(std::cout);
     nnvm::Graph g;
     g.outputs = sym.outputs;

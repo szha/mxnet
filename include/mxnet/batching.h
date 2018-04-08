@@ -46,7 +46,7 @@ class DBatchEngine {
 
   void Batch() {
     // (TODO szha) batch and execution
-    LOG(INFO) << "batching, graphs size=" << graphs_.size();
+    //LOG(INFO) << "batching, graphs size=" << graphs_.size();
     nnvm::Graph g = BatchGraphs(graphs_);
     ExecuteGraph(g);
   }

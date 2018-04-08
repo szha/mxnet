@@ -175,6 +175,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   }
 
   // generate new graph
+  bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
   ConcatNodeEntryMap concat_map;
@@ -198,7 +199,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
       }
 
       size_t num_inputs = first_op_node->num_inputs(), num_outputs = first_op_node->num_outputs();
-      LOG(INFO) << "batchable, nodes: " << num_nodes << ", inputs: " << num_inputs << ", outputs: " << num_outputs;
+      if (rewrite_debug) LOG(INFO) << "batchable, nodes: " << num_nodes << ", inputs: " << num_inputs << ", outputs: " << num_outputs;
 
       std::unordered_set<size_t> batchable_data_indices = {0}; // TODO find batchable data tensors from op
 
@@ -213,9 +214,11 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         const TShape& shape = entry_ndarray.shape();
         sample_lengths[j] = shape[in_batch_axis];
       }
-      LOG(INFO) << "sample lengths: ";
-      for (size_t l : sample_lengths) {
-        LOG(INFO) << l;
+      if (rewrite_debug) {
+        LOG(INFO) << "sample lengths: ";
+        for (size_t l : sample_lengths) {
+          LOG(INFO) << l;
+        }
       }
 
       // concat inputs
@@ -230,14 +233,14 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
                                                       old_new_node_map));
         }
       }
-      LOG(INFO) << "batch node inputs: " << batch_node_inputs.size();
+      if (rewrite_debug) LOG(INFO) << "batch node inputs: " << batch_node_inputs.size();
 
       // create op with concat inputs
       const Op* batch_op = first_op_node->op();
       nnvm::NodeEntry batch_node = MakeNode(batch_op->name.c_str(),
                                             "step_"+std::to_string(istep)+"_batch_"+batch_op->name+"_"+std::to_string(op_sign),
                                             batch_node_inputs, first_op_node->attrs.dict);
-      LOG(INFO) << "created batched op: " << batch_node.node.get()->attrs.name;
+      if (rewrite_debug) LOG(INFO) << "created batched op: " << batch_node.node.get()->attrs.name;
 
       for (uint32_t i = 0; i < num_outputs; i++) {
         nnvm::NodeEntry out_node{batch_node.node, i, batch_node.version};
@@ -261,7 +264,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         CHECK(concat_map.find(slices) == concat_map.end()) << "Must not have cycle.";
         concat_map[slices] = out_node;
       }
-      LOG(INFO) << "splitted";
+      if (rewrite_debug) LOG(INFO) << "splitted";
     }
   }
   std::vector<nnvm::NodeEntry> new_outputs;
@@ -275,12 +278,11 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
     NDArray arr = entry_arr_[e];
     arr.entry_ = new_entry;
     new_entry_arr_[new_entry] = arr;
-    LOG(INFO) << "Recorded " << arr.var() << " in new_entry_arr_";
+    if (rewrite_debug) LOG(INFO) << "Recorded " << arr.var() << " in new_entry_arr_";
   }
   nnvm::Graph new_graph;
   new_graph.outputs = new_outputs;
   // Print graph
-  bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
   if (rewrite_debug) {
     nnvm::Symbol sym;
     sym.outputs = prev_outputs;
@@ -297,7 +299,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
 
 void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   bool exec_debug = dmlc::GetEnv("DB_EXEC_DEBUG", false);
-  LOG(INFO) << "ExecuteGraph";
+  if (exec_debug) LOG(INFO) << "ExecuteGraph";
   using namespace nnvm;
   using namespace imperative;
   using AGInfo = Imperative::AGInfo;
@@ -318,10 +320,9 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     auto iter = new_entry_arr_.find(output_entry);
     CHECK(iter != new_entry_arr_.end()) << " CANNOT FIND graph.outputs";
     const auto& arr = iter->second;
-    LOG(INFO) << "graph.outputs var: " << arr.var();
+    if (exec_debug) LOG(INFO) << "graph.outputs var: " << arr.var();
     outputs.push_back(arr);
   }
-  LOG(INFO) << "OK - found all graph output NDArrays";
   // prepare ograds
   for (size_t i = 0; i < outputs.size(); ++i) {
     ograd_entries.emplace_back(NodeEntry{Node::Create(), 0, 0});
@@ -339,7 +340,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   }
 
   // Get gradient graph
-  LOG(INFO) << "Prepare gradient graph";
+  if (exec_debug) LOG(INFO) << "Prepare gradient graph";
   Symbol sym;
   sym.outputs = graph.outputs;
   std::vector<NodeEntry> xs;
@@ -348,7 +349,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   // TODO(haibin) support variables
   {
     std::vector<NodePtr> args = sym.ListInputs(Symbol::kReadOnlyArgs);
-    LOG(INFO) << "number of args = " << args.size();
+    if (exec_debug) LOG(INFO) << "number of args = " << args.size();
     xs.reserve(args.size());
     x_grads.reserve(args.size());
     x_reqs.reserve(args.size());
@@ -357,7 +358,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
       if (info.grad_req == kNullOp) continue;
       xs.emplace_back(NodeEntry{i, 0, 0});
       x_grads.push_back(&info.out_grads[0]);
-      LOG(INFO) << "args grad: " << info.out_grads[0].var();
+      if (exec_debug) LOG(INFO) << "args grad: " << info.out_grads[0].var();
       CHECK(!info.out_grads[0].is_none()) << "None NDArray found for args' grad";
       x_reqs.push_back(info.grad_req);
       info.fresh_out_grad = true;
@@ -375,13 +376,13 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   CHECK_EQ(g_graph.outputs.size(), xs.size());
   for (const auto &e : g_graph.outputs) {
     if (e.node->op() == nullptr) {
-      LOG(INFO) << "null op ptr, create a copy op";
+      if (exec_debug) LOG(INFO) << "null op ptr, create a copy op";
       auto node = Node::Create();
       node->attrs.op = copy_op;
       node->inputs.push_back(e);
       graph.outputs.push_back(NodeEntry{node, 0, 0});
     } else {
-      LOG(INFO) << "add a backward output to graph";
+      if (exec_debug) LOG(INFO) << "add a backward output to graph";
       graph.outputs.push_back(e);
     }
   }
@@ -404,8 +405,10 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     num_forward_entries = std::max(
         num_forward_entries, static_cast<size_t>(idx.entry_id(idx.outputs()[i])) + 1);
   }
-  LOG(INFO) << "num_forward_nodes: " << num_forward_nodes;
-  LOG(INFO) << "num_forward_entries: " << num_forward_entries;
+  if (exec_debug) {
+    LOG(INFO) << "num_forward_nodes: " << num_forward_nodes;
+    LOG(INFO) << "num_forward_entries: " << num_forward_entries;
+  }
 
   // Allocate buffer
   std::vector<NDArray> buff(idx.num_node_entries());
@@ -554,7 +557,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     for (size_t j = 0; j < num_outputs; ++j) {
       auto eid = idx.entry_id(i, j);
       if (!arrays[eid]->is_none()) continue;
-      LOG(INFO) << "initialize array[" << eid << "]";
+      if (exec_debug) LOG(INFO) << "initialize array[" << eid << "]";
       if (stypes[eid] == kDefaultStorage) {
         *arrays[eid] = NDArray(shapes[eid], vctx[i], true, dtypes[eid]);
       } else {

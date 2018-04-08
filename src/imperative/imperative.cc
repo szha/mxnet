@@ -109,7 +109,7 @@ OpStatePtr Imperative::Invoke(
 
   if (DBatchEngine::Get()->is_dbatch()) {
     // skip forward execution
-    LOG(INFO) << "skip forward execution";
+    //LOG(INFO) << "skip forward execution";
     return OpStatePtr();
   }
 
