@@ -8,11 +8,12 @@ model_ctx = mx.cpu()
 mx.random.seed(0)
 np.random.seed(0)
 
-bulk_size = 2
-num_bulks = 4
+batch_size = 5
+bulk_size = 3
+num_bulks = 2
 num_inputs = 2
 num_outputs = 1
-num_examples = bulk_size * num_bulks
+num_examples = bulk_size * num_bulks * batch_size
 num_hidden_layers = 0
 
 def real_fn(X):
@@ -37,7 +38,7 @@ def train(model_ctx, train_iter, epochs, num_examples, network, net_trainer, dba
         # inner loop
         autograd.set_bulk_size(bulk_size)
         for i, (data, label) in enumerate(train_iter):
-            print("iter", i)
+            print("iteration", i)
             data = data.as_in_context(model_ctx)
             label = label.as_in_context(model_ctx)
             """
@@ -67,7 +68,6 @@ X = nd.random.normal(shape=(num_examples, num_inputs))
 noise = 0.01 * nd.random.normal(shape=(num_examples,))
 y = real_fn(X) + noise
 
-batch_size = 2
 train_data = data_loader(X, y, batch_size)
 batch_train_data = data_loader(X, y, batch_size)
 
@@ -97,4 +97,4 @@ loss_sequence = []
 num_batches = num_examples / batch_size
 
 train(model_ctx, batch_train_data, epochs, num_examples, batch_net, batch_trainer, dbatch=True)
-#train(model_ctx, train_data, epochs, num_examples, net, trainer)
+train(model_ctx, train_data, epochs, num_examples, net, trainer)
