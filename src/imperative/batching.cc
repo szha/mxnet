@@ -275,6 +275,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
     NDArray arr = entry_arr_[e];
     arr.entry_ = new_entry;
     new_entry_arr_[new_entry] = arr;
+    LOG(INFO) << "Recorded " << arr.var() << " in new_entry_arr_";
   }
   nnvm::Graph new_graph;
   new_graph.outputs = new_outputs;
@@ -320,6 +321,8 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     LOG(INFO) << "graph.outputs var: " << arr.var();
     outputs.push_back(arr);
   }
+  LOG(INFO) << "OK - found all graph output NDArrays";
+  // prepare ograds
   for (size_t i = 0; i < outputs.size(); ++i) {
     ograd_entries.emplace_back(NodeEntry{Node::Create(), 0, 0});
     Imperative::AGInfo& info = Imperative::AGInfo::Create(ograd_entries.back().node);
@@ -354,6 +357,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
       if (info.grad_req == kNullOp) continue;
       xs.emplace_back(NodeEntry{i, 0, 0});
       x_grads.push_back(&info.out_grads[0]);
+      LOG(INFO) << "args grad: " << info.out_grads[0].var();
       CHECK(!info.out_grads[0].is_none()) << "None NDArray found for args' grad";
       x_reqs.push_back(info.grad_req);
       info.fresh_out_grad = true;

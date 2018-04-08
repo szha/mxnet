@@ -1,7 +1,7 @@
 from __future__ import print_function
 import mxnet as mx
 import numpy as np
-from mxnet import nd, autograd, gluon
+from mxnet import nd, autograd, gluon, batching
 
 data_ctx = mx.cpu()
 model_ctx = mx.cpu()
@@ -9,12 +9,12 @@ mx.random.seed(0)
 np.random.seed(0)
 
 batch_size = 5
-bulk_size = 3
+bulk_size = 2
 num_bulks = 2
 num_inputs = 2
 num_outputs = 1
 num_examples = bulk_size * num_bulks * batch_size
-num_hidden_layers = 0
+num_hidden_layers = 1
 
 def real_fn(X):
     return 2 * X[:, 0] - 3.4 * X[:, 1] + 4.2
@@ -31,33 +31,24 @@ def model(num_outputs, num_hidden_layers, prefix='hybridsequential0_'):
         net.add(gluon.nn.Dense(1, in_units=2))
     return net
 
-def train(model_ctx, train_iter, epochs, num_examples, network, net_trainer, dbatch=False):
+def train(model_ctx, train_iter, epochs, num_examples, network,
+          net_trainer, bulk_size, batch_mode=False):
+    batching.set_bulk_size(bulk_size)
     for e in range(epochs):
         cumulative_loss = 0
         losses = []
         # inner loop
-        autograd.set_bulk_size(bulk_size)
         for i, (data, label) in enumerate(train_iter):
             print("iteration", i)
             data = data.as_in_context(model_ctx)
             label = label.as_in_context(model_ctx)
-            """
-            The frontend should be sth like the following. If loss.backward is in scope,
-            perform batched backward.
-
-            with mx.dbatch.record():
+            with batching.batch(batch_mode=batch_mode):
                 with autograd.record():
                     output = network(data)
-                    loss = square_loss(output, label)
+                    # loss = square_loss(output, label)
+                    loss = output
                     losses.append(loss)
                 loss.backward()
-            """
-            with autograd.record(dbatch_mode=dbatch):
-                output = network(data)
-                # loss = square_loss(output, label)
-                loss = output
-                loss.backward()
-                losses.append(loss)
     	    if (i+1) == bulk_size:
                 net_trainer.step(batch_size)
                 for l in losses:
@@ -96,5 +87,9 @@ epochs = 1
 loss_sequence = []
 num_batches = num_examples / batch_size
 
-train(model_ctx, batch_train_data, epochs, num_examples, batch_net, batch_trainer, dbatch=True)
-train(model_ctx, train_data, epochs, num_examples, net, trainer)
+# with bulking
+train(model_ctx, batch_train_data, epochs, num_examples,
+      batch_net, batch_trainer, bulk_size, batch_mode=True)
+
+# without bulking
+train(model_ctx, train_data, epochs, num_examples, net, trainer, bulk_size)
