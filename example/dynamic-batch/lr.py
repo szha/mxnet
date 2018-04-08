@@ -15,7 +15,7 @@ num_inputs = 200
 num_hidden = 50
 num_outputs = 20
 num_examples = batch_size * num_batches
-num_hidden_layers = 15
+num_hidden_layers = 1
 
 def real_fn(X):
     return 2 * X[:, 0] - 3.4 * X[:, 1] + 4.2
@@ -36,7 +36,7 @@ def model(num_inputs, num_outputs, num_hidden, num_hidden_layers, prefix='hybrid
 
 def train(model_ctx, train_iter, epochs, num_examples, network,
           net_trainer, batch_size, batch_mode=False):
-    batching.set_bulk_size(batch_size)
+    batching.set_batch_size(batch_size)
     for e in range(epochs):
         cumulative_loss = 0
         losses = []
@@ -58,7 +58,7 @@ def train(model_ctx, train_iter, epochs, num_examples, network,
                 net_trainer.step(batch_size, ignore_stale_grad=True)
                 for l in losses:
                     cumulative_loss += nd.mean(l).asscalar()
-        print("Epoch %s, loss: %s" % (e, cumulative_loss / num_examples))
+        print("Epoch %s, loss: %.4f " % (e, cumulative_loss / num_examples))
 
 X = nd.random.normal(shape=(num_examples, num_inputs))
 noise = 0.01 * nd.random.normal(shape=(num_examples,))
@@ -100,9 +100,9 @@ mx.nd.waitall()
 t1 = time.time()
 
 # without batching
-#train(model_ctx, train_data, epochs, num_examples, net, trainer, batch_size)
+train(model_ctx, train_data, epochs, num_examples, net, trainer, batch_size)
 
 mx.nd.waitall()
 t2 = time.time()
-print('w/ batching', t1 - t0)
-print('w/o batching', t2 - t1)
+print('w/ batching: %.2f sec' % (t1 - t0))
+print('w/o batching: %.2f sec' % (t2 - t1))

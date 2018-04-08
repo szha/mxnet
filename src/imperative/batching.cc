@@ -27,10 +27,10 @@
 namespace mxnet {
 #if DMLC_CXX11_THREAD_LOCAL
 thread_local bool DBatchEngine::is_dbatch_ = false;
-thread_local int DBatchEngine::bulk_size_ = 0;
+thread_local int DBatchEngine::batch_size_ = 0;
 #else
 MX_THREAD_LOCAL bool DBatchEngine::is_dbatch_ = false;
-MX_THREAD_LOCAL bool DBatchEngine::bulk_size_ = 0;
+MX_THREAD_LOCAL bool DBatchEngine::batch_size_ = 0;
 #endif
 
 DBatchEngine* DBatchEngine::Get() {
@@ -137,7 +137,7 @@ nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
 
 nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // collect depth
-  bool collect_debug = dmlc::GetEnv("DB_COLLECT_DEBUG", false);
+  static bool collect_debug = dmlc::GetEnv("DB_COLLECT_DEBUG", false);
   int max_depth = 0;
   std::unordered_map<nnvm::Node*, int> depth_map;
   std::vector<nnvm::NodeEntry> prev_outputs, all_old_entries;
@@ -175,7 +175,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   }
 
   // generate new graph
-  bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
+  static bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
   ConcatNodeEntryMap concat_map;
@@ -298,7 +298,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
 
 
 void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
-  bool exec_debug = dmlc::GetEnv("DB_EXEC_DEBUG", false);
+  static bool exec_debug = dmlc::GetEnv("DB_EXEC_DEBUG", false);
   if (exec_debug) LOG(INFO) << "ExecuteGraph";
   using namespace nnvm;
   using namespace imperative;
@@ -328,7 +328,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     ograd_entries.emplace_back(NodeEntry{Node::Create(), 0, 0});
     Imperative::AGInfo& info = Imperative::AGInfo::Create(ograd_entries.back().node);
     info.ctx = outputs[i].ctx();
-    // TODO(haibin) handle the case where ograd is not 1.0
+    // TODO(haibin) handle the case where ograd is not 1.0.
     //if (ograds[i] != nullptr) {
       //info.outputs.emplace_back(*ograds[i]);
       //info.outputs.emplace_back(ograds[i]);
@@ -421,7 +421,7 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   arrays.reserve(buff.size());
   for (size_t i = 0; i < buff.size(); ++i) arrays.push_back(&buff[i]);
   // TODO(haibin) support create_graph && retain_graph for 2nd order grads
-  // const bool create_graph = false;
+  const bool create_graph = false;
   const bool retain_graph = false;
   // TODO don't use empty op states
   states.reserve(num_forward_nodes);
@@ -441,35 +441,24 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
 
   nnvm::DFSVisit(graph.outputs, [&](const nnvm::NodePtr& n){
     auto nid = idx.node_id(n.get());
-    //LOG(INFO) << "visit node " << nid;
+    if (exec_debug) LOG(INFO) << "visit node " << nid;
     for (NodeEntry e : n->inputs) {
       auto eid = idx.entry_id(e);
       if (new_entry_arr_.find(e) != new_entry_arr_.end()) {
         arrays[eid] = const_cast<NDArray*>(&(new_entry_arr_[e]));
         if (exec_debug) LOG(INFO) << "update arrays[" << eid << "]: " << new_entry_arr_[e].var();
-      } else {
-        //LOG(INFO) << "entry id " << eid << " not found in new_entry_arr_";
       }
     }
   });
-  //{
-  //  //states.reserve(num_forward_nodes);
+  // TODO(haibin) update ref count for fwd graph
+  //  states.reserve(num_forward_nodes);
   //  for (size_t i = 0; i < num_forward_nodes; ++i) {
   //    const AGInfo& info = dmlc::get<AGInfo>(idx[i].source->info);
   //    //states.emplace_back(info.state);
 
-  //    // TODO(haibin) use old new graph map to find the NDArrays
   //    for (size_t j = 0; j < info.outputs.size(); ++j) {
   //      size_t eid = idx.entry_id(i, j);
-  //      if (info.outputs[j].is_none()) {
-  //        LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
-  //                  << i << "'s " << j << "th output = none";
-  //      } else {
-  //        LOG(INFO) << "update arrays[" << eid << "] based on forward_node "
-  //                  << i << "'s " << j << "th output = " << info.outputs[j].var();
-  //      }
   //      arrays[eid] = const_cast<NDArray*>(&(info.outputs[j]));
-
   //      if (retain_graph || info.grad_req != kNullOp) ref_count[eid] = 1;
   //    }
   //  }
@@ -568,18 +557,16 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   }
 
   // Execution
-  // TODO support is_train = false;
-  //const bool is_train = true;
-  //bool prev_recording = false; //set_is_recording(create_graph);
-  //bool prev_training = set_is_training(is_train);
-  //int prev_bulk_size = Engine::Get()->set_bulk_size(1);
+  bool prev_recording = Imperative::Get()->set_is_recording(create_graph);
+  //bool prev_training = Imperative::Get()->set_is_training(is_train);
+  //int prev_bulk_size = Engine::Get()->set_bulk_size(backward_bulk_size_);
 
   Imperative::Get()->RunGraph(retain_graph, idx, arrays, 0, idx.num_nodes(),
            std::move(array_reqs), std::move(ref_count), &states, dispatch_modes);
 
+  Imperative::Get()->set_is_recording(prev_recording);
   //Engine::Get()->set_bulk_size(prev_bulk_size);
-  //set_is_recording(prev_recording);
-  //set_is_training(prev_training);
+  //Imperative::Get()->set_is_training(prev_training);
 
   // Clear history
   if (!retain_graph) {

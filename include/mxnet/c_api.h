@@ -885,10 +885,10 @@ MXNET_DLL int MXAutogradIsRecording(bool* curr);
 MXNET_DLL int MXDBatchIsDBatch(bool* curr);
 /*!
  * \brief set dynamic batching limit
- * \param bulk_size new bulk_size
- * \param prev_bulk_size previous bulk_size
+ * \param batch_size new batch_size
+ * \param prev_batch_size previous batch_size
  */
-MXNET_DLL int MXDBatchSetBulkSize(int bulk_size, int* prev_bulk_size);
+MXNET_DLL int MXDBatchSetBatchSize(int batch_size, int* prev_batch_size);
 /*!
  * \brief get whether training mode is on
  * \param curr returns the current status.

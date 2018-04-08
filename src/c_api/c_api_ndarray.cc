@@ -296,9 +296,9 @@ int MXDBatchIsDBatch(bool* curr) {
   API_END();
 }
 
-int MXDBatchSetBulkSize(int bulk_size, int* prev_bulk_size) {
+int MXDBatchSetBatchSize(int batch_size, int* prev_batch_size) {
   API_BEGIN();
-  *prev_bulk_size = DBatchEngine::Get()->set_bulk_size(bulk_size);
+  *prev_batch_size = DBatchEngine::Get()->set_batch_size(batch_size);
   API_END();
 }
 
@@ -350,12 +350,12 @@ int MXAutogradBackwardEx(mx_uint num_output,
   if (DBatchEngine::Get()->is_dbatch()) {
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
-    //LOG(INFO) << "Running MXAutogradBackwardEx in batch mode. Graph: ";
+    // LOG(INFO) << "MXAutogradBackwardEx in batch mode. Graph: ";
     // sym.Print(std::cout);
     nnvm::Graph g;
     g.outputs = sym.outputs;
     DBatchEngine::Get()->SaveGraph(g);
-    if (DBatchEngine::Get()->Graphs().size() == DBatchEngine::Get()->bulk_size()) {
+    if (DBatchEngine::Get()->Graphs().size() == DBatchEngine::Get()->batch_size()) {
       // execute and write result back
       DBatchEngine::Get()->Batch();
       DBatchEngine::Get()->Fresh();
