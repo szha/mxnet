@@ -35,17 +35,16 @@
 namespace mxnet {
 
 struct BatchInfo {
-  // number of input nodes that can be shared
-  std::vector<int> shared_inputs;
   // number of input nodes that can be batched
   std::vector<int> batched_inputs;
   // batching axes of node that can be batched
   std::vector<int> batched_axes;
 };
 
-using FOpBatchInfo = std::function<BatchInfo (const nnvm::NodeAttr& attrs);
 
-using FOpBatchSign = std::function<int64_t (const nnvm::NodeAttrs& attrs);
+using FOpBatchInfo = std::function<BatchInfo (const nnvm::NodeAttr& attrs)>;
+
+using FOpBatchSign = std::function<int64_t (const nnvm::NodeAttrs& attrs)>;
 
 
 class DBatchEngine {
