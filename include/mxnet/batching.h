@@ -34,6 +34,17 @@
 
 namespace mxnet {
 
+struct BatchInfo {
+  std::vector<int> shared_inputs;
+  std::vector<int> batched_inputs;
+  std::vector<int> batched_axes;
+};
+
+using FOpBatchInfo = std::function<BatchInfo (const nnvm::NodeAttr& attrs);
+
+using FOpBatchSign = std::function<int64_t (const nnvm::NodeAttrs& attrs);
+
+
 class DBatchEngine {
  public:
   void SaveGraph(const nnvm::Graph& g) {
