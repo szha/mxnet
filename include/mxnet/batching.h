@@ -34,9 +34,14 @@
 
 namespace mxnet {
 
+enum BatchPattern {
+  kShared,
+  kConcat
+};
+
 struct BatchInfo {
-  // number of input nodes that can be batched
-  std::vector<int> batched_inputs;
+  // batching pattern of node inputs
+  std::vector<BatchPattern> patterns;
   // batching axes of node that can be batched
   std::vector<int> batched_axes;
 };
