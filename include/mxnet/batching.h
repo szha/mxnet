@@ -35,8 +35,11 @@
 namespace mxnet {
 
 struct BatchInfo {
+  // inputs number of node that can be shared
   std::vector<int> shared_inputs;
+  // inputs number of node that can be batched
   std::vector<int> batched_inputs;
+  // batching axes of node that can be batched
   std::vector<int> batched_axes;
 };
 
