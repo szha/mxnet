@@ -34,24 +34,6 @@
 
 namespace mxnet {
 
-enum BatchPattern {
-  kShared,
-  kConcat
-};
-
-struct BatchInfo {
-  // batching pattern of node inputs
-  std::vector<BatchPattern> patterns;
-  // batching axes of node that can be batched
-  std::vector<int> batched_axes;
-};
-
-
-using FOpBatchInfo = std::function<BatchInfo (const nnvm::NodeAttr& attrs)>;
-
-using FOpBatchSign = std::function<int64_t (const nnvm::NodeAttrs& attrs)>;
-
-
 class DBatchEngine {
  public:
   void SaveGraph(const nnvm::Graph& g) {

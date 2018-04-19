@@ -261,6 +261,24 @@ using FInferStorageType = std::function<bool (const NodeAttrs& attrs,
                                               std::vector<int>* in_attrs,
                                               std::vector<int>* out_attrs)>;
 
+
+enum BatchPattern {
+  kShared,
+  kConcat
+};
+
+struct BatchInfo {
+  // batching pattern of node inputs
+  std::vector<BatchPattern> patterns;
+  // batching axes of node that can be batched
+  std::vector<int> batched_axes;
+};
+
+
+using FOpBatchInfo = std::function<BatchInfo (const NodeAttrs& attrs)>;
+
+using FOpBatchSign = std::function<int64_t (const NodeAttrs& attrs)>;
+
 }  // namespace mxnet
 
 #endif  // MXNET_OP_ATTR_TYPES_H_

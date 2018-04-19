@@ -223,6 +223,24 @@ If ``no_bias`` is set to be true, then the ``bias`` term is ignored.
 .add_argument("bias", "NDArray-or-Symbol", "Bias parameter.")
 .add_arguments(FullyConnectedParam::__FIELDS__());
 
+NNVM_REGISTER_OP(FullyConnected)
+.set_attr<FOpBatchInfo>("FOpBatchInfo", [](const NodeAttrs& attrs) {
+  const FullyConnectedParam& params = nnvm::get<FullyConnectedParam>(attrs.parsed);
+  BatchInfo info;
+  if (!params.no_bias) {
+    info.patterns = {kConcat, kShared, kShared};
+    info.batched_axes = {0, 0, 0};
+  } else {
+    info.patterns = {kConcat, kShared};
+    info.batched_axes = {0, 0};
+  }
+  return info;
+})
+.set_attr<FOpBatchSign>("FOpBatchSign", [](const NodeAttrs& attrs) {
+  return reinterpret_cast<int64_t>(attrs.op);
+});
+
+
 NNVM_REGISTER_OP(_backward_FullyConnected)
 .set_num_inputs(3)
 .set_num_outputs([](const NodeAttrs& attrs) {
