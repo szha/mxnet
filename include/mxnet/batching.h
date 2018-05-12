@@ -45,9 +45,12 @@ class DBatchEngine {
   }
 
   void Batch() {
-    nnvm::Graph g = BatchGraphs(graphs_);
-    static bool skip_exec = dmlc::GetEnv("DB_SKIP_EXEC", false);
-    if (!skip_exec) ExecuteGraph(g);
+    static bool skip_batch = dmlc::GetEnv("DB_SKIP_BATCH", false);
+    if (!skip_batch) {
+      nnvm::Graph g = BatchGraphs(graphs_);
+      static bool skip_exec = dmlc::GetEnv("DB_SKIP_EXEC", false);
+      if (!skip_exec) ExecuteGraph(g);
+    }
   }
 
   void Fresh() {

@@ -347,6 +347,7 @@ int MXAutogradBackwardEx(mx_uint num_output,
                          int **grad_stypes) {
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
+  // (TODO) if output_handles is in dbatch
   if (DBatchEngine::Get()->is_dbatch()) {
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
@@ -361,6 +362,7 @@ int MXAutogradBackwardEx(mx_uint num_output,
       DBatchEngine::Get()->Fresh();
     }
   } else {
+    // normal execution
     std::vector<NDArray*> outputs, ograds, variables;
     outputs.reserve(num_output);
     for (mx_uint i = 0; i < num_output; ++i) {

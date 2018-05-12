@@ -1,21 +1,33 @@
 from __future__ import print_function
 import mxnet as mx
 import numpy as np
-import time
+import time, argparse
 from mxnet import nd, autograd, gluon, batching
 
 data_ctx = mx.cpu()
 model_ctx = mx.cpu()
-mx.random.seed(0)
-np.random.seed(0)
 
-batch_size = 256
-num_batches = 30
+parser = argparse.ArgumentParser(description='Dynamic Batching')
+parser.add_argument('--batch-size', type=int, default=256,
+                    help='number of samples per batch')
+parser.add_argument('--seed', type=int, default=0,
+                    help='random seed')
+parser.add_argument('--profile', action='store_true', help='whether to use profiler')
+
+args = parser.parse_args()
+
+batch_size = args.batch_size
+seed = args.seed
+profile = args.profile
+num_batches = 50
 num_inputs = 200
 num_hidden = 50
 num_outputs = 20
 num_examples = batch_size * num_batches
-num_hidden_layers = 1
+num_hidden_layers = 2
+
+mx.random.seed(args.seed)
+np.random.seed(args.seed)
 
 def real_fn(X):
     return 2 * X[:, 0] - 3.4 * X[:, 1] + 4.2
@@ -42,7 +54,6 @@ def train(model_ctx, train_iter, epochs, num_examples, network,
         losses = []
         # inner loop
         for i, (data, label) in enumerate(train_iter):
-            #print("iteration", i)
             data = data.as_in_context(model_ctx)
             label = label.as_in_context(model_ctx)
             with batching.batch(batch_mode=batch_mode):
@@ -59,6 +70,10 @@ def train(model_ctx, train_iter, epochs, num_examples, network,
                 for l in losses:
                     cumulative_loss += nd.mean(l).asscalar()
         print("Epoch %s, loss: %.4f " % (e, cumulative_loss / num_examples))
+
+if profile:
+    mx.profiler.set_config(profile_all=True, filename='batch.json')
+    mx.profiler.set_state('run')
 
 X = nd.random.normal(shape=(num_examples, num_inputs))
 noise = 0.01 * nd.random.normal(shape=(num_examples,))
@@ -79,6 +94,7 @@ trainer = gluon.Trainer(params, 'sgd', {'learning_rate': 0.0001})
 batch_net = model(num_inputs, num_outputs, num_hidden, num_hidden_layers)
 batch_params = batch_net.collect_params()
 #print(params_batch)
+
 # fake init
 batch_params.initialize(mx.init.Normal(sigma=1.), ctx=model_ctx)
 names = params.keys()
@@ -92,6 +108,7 @@ epochs = 1
 
 mx.nd.waitall()
 t0 = time.time()
+
 # with batching
 train(model_ctx, batch_train_data, epochs, num_examples,
       batch_net, batch_trainer, batch_size, batch_mode=True)
@@ -106,3 +123,5 @@ mx.nd.waitall()
 t2 = time.time()
 print('w/ batching: %.2f sec' % (t1 - t0))
 print('w/o batching: %.2f sec' % (t2 - t1))
+if profile:
+    mx.profiler.set_state('stop')
