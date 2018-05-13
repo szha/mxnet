@@ -17,16 +17,20 @@
  * under the License.
  */
 #include <mxnet/batching.h>
+#include <mxnet/imperative.h>
 #include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include "./imperative_utils.h"
 
 namespace mxnet {
 #if DMLC_CXX11_THREAD_LOCAL
 thread_local bool DBatchEngine::is_dbatch_ = false;
+thread_local int DBatchEngine::batch_size_ = 0;
 #else
 MX_THREAD_LOCAL bool DBatchEngine::is_dbatch_ = false;
+MX_THREAD_LOCAL bool DBatchEngine::batch_size_ = 0;
 #endif
 
 DBatchEngine* DBatchEngine::Get() {
@@ -133,12 +137,13 @@ nnvm::NodeEntry CreateConcatNode(const std::vector<nnvm::NodePtr>& op_ptrs,
 
 nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   // collect depth
+  static bool collect_debug = dmlc::GetEnv("DB_COLLECT_DEBUG", false);
   int max_depth = 0;
   std::unordered_map<nnvm::Node*, int> depth_map;
   std::vector<nnvm::NodeEntry> prev_outputs, all_old_entries;
   for (const nnvm::Graph& g : graphs) {
     const std::vector<nnvm::NodeEntry>& g_outputs = g.outputs;
-    LOG(INFO) << "graph outputs " << g_outputs.size();
+    if (collect_debug) LOG(INFO) << "graph outputs " << g_outputs.size();
     std::copy(g_outputs.begin(), g_outputs.end(), std::inserter(prev_outputs, prev_outputs.end()));
     std::copy(g_outputs.begin(), g_outputs.end(), std::inserter(all_old_entries, all_old_entries.end()));
     nnvm::DFSVisit(g_outputs, [&](const nnvm::NodePtr& n){
@@ -148,14 +153,15 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         int idepth = depth_map.at(e.node.get());
         depth = std::max(depth, idepth+1);
       }
-      LOG(INFO) << "depth of (" << n->attrs.name << "): " << depth;
+      if (collect_debug) LOG(INFO) << "depth of (" << n->attrs.name << "): " << depth;
       depth_map.insert({n.get(), depth});
       max_depth = std::max(depth, max_depth);
     });
   }
-  LOG(INFO) << "total graph outputs " << prev_outputs.size();
-
-  LOG(INFO) << "max depth " << max_depth;
+  if (collect_debug) {
+    LOG(INFO) << "total graph outputs " << prev_outputs.size();
+    LOG(INFO) << "max depth " << max_depth;
+  }
   // depth: sign->node
   std::vector<std::unordered_map<uint64_t, std::vector<nnvm::NodePtr>>> forward_steps;
   forward_steps.resize(max_depth + 1);
@@ -169,6 +175,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   }
 
   // generate new graph
+  static bool rewrite_debug = dmlc::GetEnv("DB_REWRITE_DEBUG", false);
   // create mapping from old node to new node
   std::unordered_map<nnvm::Node*, std::vector<nnvm::NodePtr>> old_new_node_map;
   ConcatNodeEntryMap concat_map;
@@ -192,7 +199,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
       }
 
       size_t num_inputs = first_op_node->num_inputs(), num_outputs = first_op_node->num_outputs();
-      LOG(INFO) << "batchable, nodes: " << num_nodes << ", inputs: " << num_inputs << ", outputs: " << num_outputs;
+      if (rewrite_debug) LOG(INFO) << "batchable, nodes: " << num_nodes << ", inputs: " << num_inputs << ", outputs: " << num_outputs;
 
       std::unordered_set<size_t> batchable_data_indices = {0}; // TODO find batchable data tensors from op
 
@@ -207,9 +214,11 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         const TShape& shape = entry_ndarray.shape();
         sample_lengths[j] = shape[in_batch_axis];
       }
-      LOG(INFO) << "sample lengths: ";
-      for (size_t l : sample_lengths) {
-        LOG(INFO) << l;
+      if (rewrite_debug) {
+        LOG(INFO) << "sample lengths: ";
+        for (size_t l : sample_lengths) {
+          LOG(INFO) << l;
+        }
       }
 
       // concat inputs
@@ -224,14 +233,14 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
                                                       old_new_node_map));
         }
       }
-      LOG(INFO) << "batch node inputs: " << batch_node_inputs.size();
+      if (rewrite_debug) LOG(INFO) << "batch node inputs: " << batch_node_inputs.size();
 
       // create op with concat inputs
       const Op* batch_op = first_op_node->op();
       nnvm::NodeEntry batch_node = MakeNode(batch_op->name.c_str(),
                                             "step_"+std::to_string(istep)+"_batch_"+batch_op->name+"_"+std::to_string(op_sign),
                                             batch_node_inputs, first_op_node->attrs.dict);
-      LOG(INFO) << "created batched op: " << batch_node.node.get()->attrs.name;
+      if (rewrite_debug) LOG(INFO) << "created batched op: " << batch_node.node.get()->attrs.name;
 
       for (uint32_t i = 0; i < num_outputs; i++) {
         nnvm::NodeEntry out_node{batch_node.node, i, batch_node.version};
@@ -255,7 +264,7 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
         CHECK(concat_map.find(slices) == concat_map.end()) << "Must not have cycle.";
         concat_map[slices] = out_node;
       }
-      LOG(INFO) << "splitted";
+      if (rewrite_debug) LOG(INFO) << "splitted";
     }
   }
   std::vector<nnvm::NodeEntry> new_outputs;
@@ -269,11 +278,12 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
     NDArray arr = entry_arr_[e];
     arr.entry_ = new_entry;
     new_entry_arr_[new_entry] = arr;
+    if (rewrite_debug) LOG(INFO) << "Recorded " << arr.var() << " in new_entry_arr_";
   }
   nnvm::Graph new_graph;
   new_graph.outputs = new_outputs;
   // Print graph
-  {
+  if (rewrite_debug) {
     nnvm::Symbol sym;
     sym.outputs = prev_outputs;
     std::cout << "Full Old Graph: \n";
@@ -286,8 +296,279 @@ nnvm::Graph DBatchEngine::BatchGraphs(const std::vector<nnvm::Graph>& graphs) {
   return new_graph;
 }
 
-void DBatchEngine::ExecuteGraph(const nnvm::Graph& graph) {
-  // TODO
+
+void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
+  static bool exec_debug = dmlc::GetEnv("DB_EXEC_DEBUG", false);
+  if (exec_debug) LOG(INFO) << "ExecuteGraph";
+  using namespace nnvm;
+  using namespace imperative;
+  using AGInfo = Imperative::AGInfo;
+  nnvm::Graph graph = fwd_graph;
+  auto fwd_outputs = fwd_graph.outputs;
+
+  // g is the forward graph
+  size_t num_forward_outputs = graph.outputs.size();
+
+  // Get outputs from the forward graph
+  std::vector<NDArray> outputs;
+  std::vector<NDArray> ograds;
+  std::vector<NodeEntry> ograd_entries;
+  outputs.reserve(num_forward_outputs);
+  ograds.reserve(num_forward_outputs);
+  ograd_entries.reserve(num_forward_outputs);
+  for (NodeEntry output_entry : graph.outputs) {
+    auto iter = new_entry_arr_.find(output_entry);
+    CHECK(iter != new_entry_arr_.end()) << " CANNOT FIND graph.outputs";
+    const auto& arr = iter->second;
+    if (exec_debug) LOG(INFO) << "graph.outputs var: " << arr.var();
+    outputs.push_back(arr);
+  }
+  // prepare ograds
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    ograd_entries.emplace_back(NodeEntry{Node::Create(), 0, 0});
+    Imperative::AGInfo& info = Imperative::AGInfo::Create(ograd_entries.back().node);
+    info.ctx = outputs[i].ctx();
+    info.outputs.emplace_back(outputs[i].shape(), outputs[i].ctx(),
+                              true, outputs[i].dtype());
+    info.outputs.back() = static_cast<real_t>(1.0);
+  }
+
+  // Get gradient graph
+  if (exec_debug) LOG(INFO) << "Prepare gradient graph";
+  Symbol sym;
+  sym.outputs = graph.outputs;
+  std::vector<NodeEntry> xs;
+  std::vector<NDArray*> x_grads;
+  std::vector<OpReqType> x_reqs;
+  {
+    std::vector<NodePtr> args = sym.ListInputs(Symbol::kReadOnlyArgs);
+    if (exec_debug) LOG(INFO) << "number of args = " << args.size();
+    xs.reserve(args.size());
+    x_grads.reserve(args.size());
+    x_reqs.reserve(args.size());
+    for (const auto& i : args) {
+      Imperative::AGInfo& info = Imperative::AGInfo::Get(i);
+      if (info.grad_req == kNullOp) continue;
+      xs.emplace_back(NodeEntry{i, 0, 0});
+      x_grads.push_back(&info.out_grads[0]);
+      if (exec_debug) LOG(INFO) << "args grad: " << info.out_grads[0].var();
+      CHECK(!info.out_grads[0].is_none()) << "None NDArray found for args' grad";
+      x_reqs.push_back(info.grad_req);
+      info.fresh_out_grad = true;
+    }
+    CHECK_GT(xs.size(), 0)
+        << "There are no inputs in computation graph that require gradients.";
+  }
+
+  static const std::vector<const Op*> zero_ops{Op::Get("zeros_like"), Op::Get("_zeros")};
+  static const Op* copy_op = Op::Get("_copy");
+  Graph g_graph = pass::Gradient(
+      graph, graph.outputs, xs, ograd_entries,
+      exec::AggregateGradient, nullptr, nullptr,
+      zero_ops, "_copy");
+  CHECK_EQ(g_graph.outputs.size(), xs.size());
+  for (const auto &e : g_graph.outputs) {
+    if (e.node->op() == nullptr) {
+      if (exec_debug) LOG(INFO) << "null op ptr, create a copy op";
+      auto node = Node::Create();
+      node->attrs.op = copy_op;
+      node->inputs.push_back(e);
+      graph.outputs.push_back(NodeEntry{node, 0, 0});
+    } else {
+      if (exec_debug) LOG(INFO) << "add a backward output to graph";
+      graph.outputs.push_back(e);
+    }
+  }
+  // Print graph
+  if (exec_debug) {
+    Symbol sym;
+    sym.outputs = graph.outputs;
+    std::cout << "Full New Forward Backward Graph: \n";
+    sym.Print(std::cout);
+  }
+
+  // prepare execution for fwd bwd graph
+  const auto& idx = graph.indexed_graph();
+  // get number of nodes used in forward pass
+  size_t num_forward_nodes = 0;
+  size_t num_forward_entries = 0;
+  for (size_t i = 0; i < num_forward_outputs; ++i) {
+    num_forward_nodes = std::max(
+        num_forward_nodes, static_cast<size_t>(idx.outputs()[i].node_id + 1));
+    num_forward_entries = std::max(
+        num_forward_entries, static_cast<size_t>(idx.entry_id(idx.outputs()[i])) + 1);
+  }
+  if (exec_debug) {
+    LOG(INFO) << "num_forward_nodes: " << num_forward_nodes;
+    LOG(INFO) << "num_forward_entries: " << num_forward_entries;
+  }
+
+  // Allocate buffer
+  std::vector<NDArray> buff(idx.num_node_entries());
+  // reference count for kNullOp, default to 1 to avoid any null op
+  // TODO(haibin) initialize with 0 and correctly calculate ref_counts
+  std::vector<uint32_t> ref_count(buff.size(), 1);
+  // each op has a state
+  std::vector<OpStatePtr> states;
+  std::vector<NDArray*> arrays;
+  arrays.reserve(buff.size());
+  for (size_t i = 0; i < buff.size(); ++i) arrays.push_back(&buff[i]);
+  const bool create_graph = false;
+  const bool retain_graph = false;
+  // TODO don't use empty op states
+  states.reserve(num_forward_nodes);
+  for (size_t i = 0; i < num_forward_nodes; ++i) {
+    states.emplace_back(OpStatePtr());
+  }
+  // forward output ndarray
+  for (auto e: fwd_outputs) {
+    auto eid = idx.entry_id(e);
+    if (new_entry_arr_.find(e) != new_entry_arr_.end()) {
+      arrays[eid] = const_cast<NDArray*>(&(new_entry_arr_[e]));
+      if (exec_debug) LOG(INFO) << "update arrays[" << eid << "]: " << new_entry_arr_[e].var();
+    } else {
+      if (exec_debug) LOG(INFO) << "entry id " << eid << " not found in new_entry_arr_";
+    }
+  }
+
+  nnvm::DFSVisit(graph.outputs, [&](const nnvm::NodePtr& n){
+    auto nid = idx.node_id(n.get());
+    if (exec_debug) LOG(INFO) << "visit node " << nid;
+    for (NodeEntry e : n->inputs) {
+      auto eid = idx.entry_id(e);
+      if (new_entry_arr_.find(e) != new_entry_arr_.end()) {
+        arrays[eid] = const_cast<NDArray*>(&(new_entry_arr_[e]));
+        if (exec_debug) LOG(INFO) << "update arrays[" << eid << "]: " << new_entry_arr_[e].var();
+      }
+    }
+  });
+  // TODO(haibin) update ref count for fwd graph
+  //  states.reserve(num_forward_nodes);
+  //  for (size_t i = 0; i < num_forward_nodes; ++i) {
+  //    const AGInfo& info = dmlc::get<AGInfo>(idx[i].source->info);
+  //    //states.emplace_back(info.state);
+
+  //    for (size_t j = 0; j < info.outputs.size(); ++j) {
+  //      size_t eid = idx.entry_id(i, j);
+  //      arrays[eid] = const_cast<NDArray*>(&(info.outputs[j]));
+  //      if (retain_graph || info.grad_req != kNullOp) ref_count[eid] = 1;
+  //    }
+  //  }
+  //}
+
+  for (size_t i = 0; i < ograd_entries.size(); ++i) {
+    if (!idx.exist(ograd_entries[i].node.get())) {
+      LOG(INFO) << i << "the ograd entry doesn't exist. continue.";
+      continue;
+    }
+    AGInfo& info = AGInfo::Get(ograd_entries[i].node);
+    if (exec_debug) {
+      LOG(INFO) << "update arrays[" << idx.entry_id(ograd_entries[i])
+                << "] based on ograd_entry " << i << " = " << info.outputs[0].var();
+    }
+    arrays[idx.entry_id(ograd_entries[i])] = &info.outputs[0];
+  }
+
+  for (size_t i = num_forward_outputs; i < graph.outputs.size(); ++i) {
+    size_t eid = idx.entry_id(graph.outputs[i]);
+    if (exec_debug) {
+      LOG(INFO) << "update arrays[" << eid << "] based on backward output "
+                << i << " = " << x_grads[i - num_forward_outputs]->var();
+    }
+    arrays[eid] = x_grads[i - num_forward_outputs];
+    ref_count[eid] = 1;
+  }
+
+  // Assign context
+  auto vctx = PlaceDevice(idx);
+
+  // Infer shape type
+  {
+    std::pair<uint32_t, uint32_t> node_range, entry_range;
+    node_range = {0, idx.num_nodes()};
+    entry_range = {0, idx.num_node_entries()};
+
+    ShapeVector shapes;
+    shapes.reserve(idx.num_node_entries());
+    for (const auto& i : arrays) shapes.emplace_back(i->shape());
+    CheckAndInferShape(&graph, std::move(shapes), false,
+                       node_range, entry_range);
+
+    DTypeVector dtypes;
+    dtypes.reserve(idx.num_node_entries());
+    for (const auto& i : arrays) dtypes.emplace_back(i->dtype());
+    CheckAndInferType(&graph, std::move(dtypes), false,
+                      node_range, entry_range);
+
+    StorageTypeVector stypes;
+    stypes.reserve(idx.num_node_entries());
+    for (const auto& i : arrays) stypes.emplace_back(i->storage_type());
+    exec::DevMaskVector dev_mask;
+    dev_mask.reserve(idx.num_nodes());
+    for (const auto& i : vctx) dev_mask.emplace_back(i.dev_mask());
+    CheckAndInferStorageType(&graph, std::move(dev_mask), std::move(stypes), false,
+                             node_range, entry_range);
+  }
+
+  // TODO(haibin) Calculate ref count
+  //for (size_t i = 0; i < idx.num_nodes(); ++i) {
+  //  for (const auto& j : idx[i].inputs) {
+  //     ++ref_count[idx.entry_id(j)];
+  //  }
+  //}
+
+  // Assign reqs
+  std::vector<OpReqType> array_reqs(arrays.size(), kWriteTo);
+  // TODO(haibin) update req based on ref_count
+  //for (size_t i = num_forward_entries; i < idx.num_node_entries(); ++i) {
+  //  if (ref_count[i] == 0) array_reqs[i] = kNullOp;
+  //}
+  //for (size_t i = num_forward_outputs; i < idx.outputs().size(); ++i) {
+  //  size_t eid = idx.entry_id(idx.outputs()[i]);
+  //  array_reqs[eid] = x_reqs[i - num_forward_outputs];
+  //}
+
+  const auto& shapes = graph.GetAttr<ShapeVector>("shape");
+  const auto& dtypes = graph.GetAttr<DTypeVector>("dtype");
+  const auto& stypes = graph.GetAttr<StorageTypeVector>("storage_type");
+  const auto& dispatch_modes = graph.GetAttr<DispatchModeVector>("dispatch_mode");
+
+  for (size_t i = 0; i < idx.num_nodes(); ++i) {
+    auto num_outputs = idx[i].source->num_outputs();
+    for (size_t j = 0; j < num_outputs; ++j) {
+      auto eid = idx.entry_id(i, j);
+      if (!arrays[eid]->is_none()) continue;
+      if (exec_debug) LOG(INFO) << "initialize array[" << eid << "]";
+      if (stypes[eid] == kDefaultStorage) {
+        *arrays[eid] = NDArray(shapes[eid], vctx[i], true, dtypes[eid]);
+      } else {
+        *arrays[eid] = NDArray(static_cast<NDArrayStorageType>(stypes[eid]),
+                               shapes[eid], vctx[i], true, dtypes[eid]);
+      }
+    }
+  }
+
+  // Execution
+  const bool is_train = true;
+  static const int backward_bulk_size = dmlc::GetEnv("MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN", 15);
+  bool prev_recording = Imperative::Get()->set_is_recording(create_graph);
+  bool prev_training = Imperative::Get()->set_is_training(is_train);
+  int prev_bulk_size = Engine::Get()->set_bulk_size(backward_bulk_size);
+
+  Imperative::Get()->RunGraph(retain_graph, idx, arrays, 0, idx.num_nodes(),
+           std::move(array_reqs), std::move(ref_count), &states, dispatch_modes);
+
+  Imperative::Get()->set_is_recording(prev_recording);
+  Engine::Get()->set_bulk_size(prev_bulk_size);
+  Imperative::Get()->set_is_training(prev_training);
+
+  // Clear history
+  if (!retain_graph) {
+    nnvm::DFSVisit(sym.outputs, [&](const nnvm::NodePtr& n) {
+      AGInfo::Clear(n);
+      n->inputs.clear();
+    });
+  }
 }
 
 }  // namespace mxnet

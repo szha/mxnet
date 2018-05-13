@@ -265,12 +265,6 @@ int MXAutogradIsTraining(bool* curr) {
   API_END();
 }
 
-int MXDBatchSetIsDBatch(int is_dbatch) {
-  API_BEGIN();
-  DBatchEngine::Get()->set_is_dbatch(static_cast<bool>(is_dbatch));
-  API_END();
-}
-
 int MXAutogradSetIsTraining(int is_training, int* prev) {
   API_BEGIN();
   *prev = Imperative::Get()->set_is_training(static_cast<bool>(is_training));
@@ -286,6 +280,25 @@ int MXAutogradIsRecording(bool* curr) {
 int MXAutogradSetIsRecording(int is_recording, int* prev) {
   API_BEGIN();
   *prev = Imperative::Get()->set_is_recording(static_cast<bool>(is_recording));
+  API_END();
+}
+
+int MXDBatchSetIsDBatch(int is_dbatch) {
+  API_BEGIN();
+  DBatchEngine::Get()->set_is_dbatch(static_cast<bool>(is_dbatch));
+  API_END();
+}
+
+
+int MXDBatchIsDBatch(bool* curr) {
+  API_BEGIN();
+  *curr = DBatchEngine::Get()->is_dbatch();
+  API_END();
+}
+
+int MXDBatchSetBatchSize(int batch_size, int* prev_batch_size) {
+  API_BEGIN();
+  *prev_batch_size = DBatchEngine::Get()->set_batch_size(batch_size);
   API_END();
 }
 
@@ -335,55 +348,59 @@ int MXAutogradBackwardEx(mx_uint num_output,
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
   // (TODO) if output_handles is in dbatch
-  if (true) {
+  if (DBatchEngine::Get()->is_dbatch()) {
+    CHECK_EQ(num_variables, 0) << "Batch mode doesn't support 2nd order gradients";
+    CHECK(ograd_handles == nullptr) << "Batch mode only supports ograd = 1.0";
+    CHECK(is_train) << "Batch mode inference is not supported";
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
-    // LOG(INFO) << "Graph: ";
+    // LOG(INFO) << "MXAutogradBackwardEx in batch mode. Graph: ";
     // sym.Print(std::cout);
     nnvm::Graph g;
     g.outputs = sym.outputs;
     DBatchEngine::Get()->SaveGraph(g);
-    if (DBatchEngine::Get()->Graphs().size() == 5) {
+    if (DBatchEngine::Get()->Graphs().size() == DBatchEngine::Get()->batch_size()) {
       // execute and write result back
       DBatchEngine::Get()->Batch();
       DBatchEngine::Get()->Fresh();
     }
+  } else {
+    // normal execution
+    std::vector<NDArray*> outputs, ograds, variables;
+    outputs.reserve(num_output);
+    for (mx_uint i = 0; i < num_output; ++i) {
+      outputs.emplace_back(reinterpret_cast<NDArray*>(output_handles[i]));
+    }
+
+    ograds.reserve(num_output);
+    for (mx_uint i = 0; i < num_output; ++i) {
+      if (ograd_handles != nullptr) {
+        ograds.emplace_back(reinterpret_cast<NDArray*>(ograd_handles[i]));
+      } else {
+        ograds.emplace_back(nullptr);
+      }
+    }
+
+    variables.reserve(num_variables);
+    for (mx_uint i = 0; i < num_variables; ++i) {
+      variables.emplace_back(reinterpret_cast<NDArray*>(var_handles[i]));
+    }
+
+    auto grads = Imperative::Get()->Backward(outputs, ograds, variables, is_train,
+                                                    retain_graph, create_graph);
+    if (num_variables != 0) {
+      ret->ret_handles.clear();
+      ret->out_types.clear();
+      ret->ret_handles.reserve(grads.size());
+      ret->out_types.reserve(grads.size());
+      for (const auto& i : grads) {
+        ret->ret_handles.push_back(i);
+        ret->out_types.push_back(i->storage_type());
+      }
+      *grad_handles = dmlc::BeginPtr(ret->ret_handles);
+      *grad_stypes = dmlc::BeginPtr(ret->out_types);
+    }
   }
-
-  // std::vector<NDArray*> outputs, ograds, variables;
-  // outputs.reserve(num_output);
-  // for (mx_uint i = 0; i < num_output; ++i) {
-  //   outputs.emplace_back(reinterpret_cast<NDArray*>(output_handles[i]));
-  // }
-
-  // ograds.reserve(num_output);
-  // for (mx_uint i = 0; i < num_output; ++i) {
-  //   if (ograd_handles != nullptr) {
-  //     ograds.emplace_back(reinterpret_cast<NDArray*>(ograd_handles[i]));
-  //   } else {
-  //     ograds.emplace_back(nullptr);
-  //   }
-  // }
-
-  // variables.reserve(num_variables);
-  // for (mx_uint i = 0; i < num_variables; ++i) {
-  //   variables.emplace_back(reinterpret_cast<NDArray*>(var_handles[i]));
-  // }
-
-  // auto grads = Imperative::Get()->Backward(outputs, ograds, variables, is_train,
-  //                                                 retain_graph, create_graph);
-  // if (num_variables != 0) {
-  //   ret->ret_handles.clear();
-  //   ret->out_types.clear();
-  //   ret->ret_handles.reserve(grads.size());
-  //   ret->out_types.reserve(grads.size());
-  //   for (const auto& i : grads) {
-  //     ret->ret_handles.push_back(i);
-  //     ret->out_types.push_back(i->storage_type());
-  //   }
-  //   *grad_handles = dmlc::BeginPtr(ret->ret_handles);
-  //   *grad_stypes = dmlc::BeginPtr(ret->out_types);
-  // }
   API_END();
 }
 

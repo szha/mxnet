@@ -45,10 +45,12 @@ class DBatchEngine {
   }
 
   void Batch() {
-    // (TODO szha) batch and execution
-    LOG(INFO) << "batching, graphs size=" << graphs_.size();
-    nnvm::Graph g = BatchGraphs(graphs_);
-    ExecuteGraph(g);
+    static bool skip_batch = dmlc::GetEnv("DB_SKIP_BATCH", false);
+    if (!skip_batch) {
+      nnvm::Graph g = BatchGraphs(graphs_);
+      static bool skip_exec = dmlc::GetEnv("DB_SKIP_EXEC", false);
+      if (!skip_exec) ExecuteGraph(g);
+    }
   }
 
   void Fresh() {
@@ -74,13 +76,24 @@ class DBatchEngine {
     return is_dbatch_;
   }
 
+  int batch_size() const {
+    return batch_size_;
+  }
+
+  int set_batch_size(int batch_size) {
+    batch_size_ = batch_size;
+    return batch_size;
+  }
+
   static DBatchEngine* Get();
 
  private:
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local bool is_dbatch_;
+  static thread_local int batch_size_;
 #else
   static MX_THREAD_LOCAL bool is_dbatch_;
+  static MX_THREAD_LOCAL int batch_size_;
 #endif
   std::vector<nnvm::Graph> graphs_;
   nnvm::NodeEntryMap<NDArray> entry_arr_;

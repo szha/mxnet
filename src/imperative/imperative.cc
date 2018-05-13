@@ -109,7 +109,7 @@ OpStatePtr Imperative::Invoke(
 
   if (DBatchEngine::Get()->is_dbatch()) {
     // skip forward execution
-    LOG(INFO) << "skip forward execution";
+    //LOG(INFO) << "skip forward execution";
     return OpStatePtr();
   }
 
@@ -150,8 +150,14 @@ void Imperative::GetBackwardDependency(
   std::vector<bool>& save_outputs = *p_save_outputs;
   save_inputs.resize(num_inputs);
   save_outputs.resize(num_outputs);
-  std::fill(save_inputs.begin(), save_inputs.end(), false);
-  std::fill(save_outputs.begin(), save_outputs.end(), false);
+  // TODO(haibin) don't save inputs/outputs for dbatch.
+  if (DBatchEngine::Get()->is_dbatch()) {
+    std::fill(save_inputs.begin(), save_inputs.end(), true);
+    std::fill(save_outputs.begin(), save_outputs.end(), true);
+  } else {
+    std::fill(save_inputs.begin(), save_inputs.end(), false);
+    std::fill(save_outputs.begin(), save_outputs.end(), false);
+  }
 
   node->inputs.clear();
   node->inputs.reserve(num_inputs);
@@ -294,16 +300,26 @@ void Imperative::RunGraph(
   ShapeVector arg_shapes;
   DTypeVector arg_dtypes;
   std::vector<OpReqType> req;
-
+  static bool exec_debug = dmlc::GetEnv("MXNET_EXEC_DEBUG", false);
   for (size_t i = node_start; i < node_end; ++i) {
     const nnvm::IndexedGraph::Node& node = idx[i];
+    if (exec_debug && node.source->is_variable()) LOG(INFO) << "Node " << i << " var";
     if (node.source->op() == nullptr) continue;
     auto num_outputs = node.source->num_outputs();
     ndinputs.clear();
     ndinputs.reserve(node.inputs.size());
+    if (exec_debug) LOG(INFO) << "Node " << i << " " << node.source->attrs.op->name;
     for (const auto& j : node.inputs) {
-      ndinputs.emplace_back(arrays[idx.entry_id(j)]);
+      auto eid = idx.entry_id(j);
+      ndinputs.emplace_back(arrays[eid]);
       CHECK(!ndinputs.back()->is_none()) << idx[j.node_id].source->attrs.name << " " << j.index;
+      if (exec_debug) LOG(INFO) << "\tinput " << eid << ": " << arrays[eid]->var();
+    }
+    if (exec_debug) {
+      for (uint32_t index = 0; index < node.source->num_outputs(); ++index) {
+        uint32_t eid = idx.entry_id(i, index);
+        LOG(INFO) << "\toutput " << eid << ": " << arrays[eid]->var();
+      }
     }
     ndoutputs.clear();
     ndoutputs.reserve(num_outputs);
@@ -348,14 +364,17 @@ void Imperative::RunGraph(
       if (recording) RecordOp(NodeAttrs(node.source->attrs), ndinputs, ndoutputs);
     }
 
-    for (const auto& j : node.inputs) {
-      size_t eid = idx.entry_id(j);
-      --ref_count[eid];
-      if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
-    }
-    for (size_t j = 0; j < ndoutputs.size(); ++j) {
-      size_t eid = idx.entry_id(i, j);
-      if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
+    // TODO(haibin) reset ref count for dbatch o that NDArrays are released as soon as they are not needed
+    if (!DBatchEngine::Get()->is_dbatch()) {
+      for (const auto& j : node.inputs) {
+        size_t eid = idx.entry_id(j);
+        --ref_count[eid];
+        if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
+      }
+      for (size_t j = 0; j < ndoutputs.size(); ++j) {
+        size_t eid = idx.entry_id(i, j);
+        if (ref_count[eid] == 0) arrays[eid]->ptr_.reset();
+      }
     }
   }
 }

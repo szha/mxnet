@@ -104,30 +104,26 @@ class _RecordingStateScope(object):
             backward([y])
 
     """
-    def __init__(self, is_record, train_mode, dbatch_mode=False): #pylint: disable=redefined-outer-name
+    def __init__(self, is_record, train_mode): #pylint: disable=redefined-outer-name
         self._enter_is_record = is_record
         self._enter_train_mode = train_mode
         self._prev_is_record = None
         self._prev_train_mode = None
-        self._dbatch_mode = dbatch_mode
 
     def __enter__(self):
         if self._enter_is_record is not None:
             self._prev_is_record = set_recording(self._enter_is_record)
         if self._enter_train_mode is not None:
             self._prev_train_mode = set_training(self._enter_train_mode)
-        if self._dbatch_mode is not None:
-            set_dbatch(self._dbatch_mode)
 
     def __exit__(self, ptype, value, trace):
         if self._enter_is_record is not None and self._prev_is_record != self._enter_is_record:
             set_recording(self._prev_is_record)
         if self._enter_train_mode is not None and self._prev_train_mode != self._enter_train_mode:
             set_training(self._prev_train_mode)
-        set_dbatch(False)
 
 
-def record(train_mode=True, dbatch_mode=False): #pylint: disable=redefined-outer-name
+def record(train_mode=True): #pylint: disable=redefined-outer-name
     """Returns an autograd recording scope context to be used in 'with' statement
     and captures code that needs gradients to be calculated.
 
@@ -148,7 +144,7 @@ def record(train_mode=True, dbatch_mode=False): #pylint: disable=redefined-outer
         Whether the forward pass is in training or predicting mode. This controls the behavior
         of some layers such as Dropout, BatchNorm.
     """
-    return _RecordingStateScope(True, train_mode, dbatch_mode)
+    return _RecordingStateScope(True, train_mode)
 
 
 def pause(train_mode=False): #pylint: disable=redefined-outer-name

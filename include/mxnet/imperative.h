@@ -205,6 +205,7 @@ class Imperative {
 
  private:
   friend class NDArray;
+  friend class DBatchEngine;
   /*! \brief make constructor protected. */
   Imperative() {
     if (dmlc::GetEnv("MXNET_EXEC_BULK_EXEC_TRAIN", 1)) {
