@@ -328,15 +328,9 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
     ograd_entries.emplace_back(NodeEntry{Node::Create(), 0, 0});
     Imperative::AGInfo& info = Imperative::AGInfo::Create(ograd_entries.back().node);
     info.ctx = outputs[i].ctx();
-    // TODO(haibin) handle the case where ograd is not 1.0.
-    //if (ograds[i] != nullptr) {
-      //info.outputs.emplace_back(*ograds[i]);
-      //info.outputs.emplace_back(ograds[i]);
-    //} else {
-      info.outputs.emplace_back(outputs[i].shape(), outputs[i].ctx(),
-                                true, outputs[i].dtype());
-      info.outputs.back() = static_cast<real_t>(1.0);
-    //}
+    info.outputs.emplace_back(outputs[i].shape(), outputs[i].ctx(),
+                              true, outputs[i].dtype());
+    info.outputs.back() = static_cast<real_t>(1.0);
   }
 
   // Get gradient graph
@@ -346,7 +340,6 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   std::vector<NodeEntry> xs;
   std::vector<NDArray*> x_grads;
   std::vector<OpReqType> x_reqs;
-  // TODO(haibin) support variables
   {
     std::vector<NodePtr> args = sym.ListInputs(Symbol::kReadOnlyArgs);
     if (exec_debug) LOG(INFO) << "number of args = " << args.size();
@@ -420,7 +413,6 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   std::vector<NDArray*> arrays;
   arrays.reserve(buff.size());
   for (size_t i = 0; i < buff.size(); ++i) arrays.push_back(&buff[i]);
-  // TODO(haibin) support create_graph && retain_graph for 2nd order grads
   const bool create_graph = false;
   const bool retain_graph = false;
   // TODO don't use empty op states
@@ -557,16 +549,18 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
   }
 
   // Execution
+  const bool is_train = true;
+  static const int backward_bulk_size = dmlc::GetEnv("MXNET_EXEC_BULK_EXEC_MAX_NODE_TRAIN", 15);
   bool prev_recording = Imperative::Get()->set_is_recording(create_graph);
-  //bool prev_training = Imperative::Get()->set_is_training(is_train);
-  //int prev_bulk_size = Engine::Get()->set_bulk_size(backward_bulk_size_);
+  bool prev_training = Imperative::Get()->set_is_training(is_train);
+  int prev_bulk_size = Engine::Get()->set_bulk_size(backward_bulk_size);
 
   Imperative::Get()->RunGraph(retain_graph, idx, arrays, 0, idx.num_nodes(),
            std::move(array_reqs), std::move(ref_count), &states, dispatch_modes);
 
   Imperative::Get()->set_is_recording(prev_recording);
-  //Engine::Get()->set_bulk_size(prev_bulk_size);
-  //Imperative::Get()->set_is_training(prev_training);
+  Engine::Get()->set_bulk_size(prev_bulk_size);
+  Imperative::Get()->set_is_training(prev_training);
 
   // Clear history
   if (!retain_graph) {
@@ -575,10 +569,6 @@ void DBatchEngine::ExecuteGraph(const nnvm::Graph& fwd_graph) {
       n->inputs.clear();
     });
   }
-  //if (variables.size()) {
-  //  return x_grads;
-  //}
-  //return {};
 }
 
 }  // namespace mxnet

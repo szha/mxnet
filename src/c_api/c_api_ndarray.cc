@@ -349,6 +349,9 @@ int MXAutogradBackwardEx(mx_uint num_output,
   API_BEGIN();
   // (TODO) if output_handles is in dbatch
   if (DBatchEngine::Get()->is_dbatch()) {
+    CHECK_EQ(num_variables, 0) << "Batch mode doesn't support 2nd order gradients";
+    CHECK(ograd_handles == nullptr) << "Batch mode only supports ograd = 1.0";
+    CHECK(is_train) << "Batch mode inference is not supported";
     NDArray* head = reinterpret_cast<NDArray*>(output_handles[0]);
     nnvm::Symbol sym = head->get_autograd_symbol();
     // LOG(INFO) << "MXAutogradBackwardEx in batch mode. Graph: ";
