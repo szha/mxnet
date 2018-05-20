@@ -64,14 +64,19 @@ class GPUPooledStorageManager final : public StorageManager {
   void Free(Storage::Handle handle) override;
 
   void DirectFree(Storage::Handle handle) override {
+    handle.size = 1ul << log2_round_up(handle.size);
     std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
     DirectFreeNoLock(handle);
   }
 
  private:
+  static inline int log2_round_up(size_t s) { // invariant: s > 0
+    int fls = __builtin_clzl(s); // find last set
+    return std::max(5, (64-fls) + ((__builtin_ctzl(s) < fls - 1)?1:0)); // must be bigger than 32 for nccl scatter
+  }
   void DirectFreeNoLock(Storage::Handle handle) {
     cudaError_t err = cudaFree(handle.dptr);
-    size_t size = handle.size + NDEV;
+    size_t size = handle.size;
     // ignore unloading error, as memory has already been recycled
     if (err != cudaSuccess && err != cudaErrorCudartUnloading) {
       LOG(FATAL) << "CUDA: " << cudaGetErrorString(err);
@@ -85,18 +90,17 @@ class GPUPooledStorageManager final : public StorageManager {
   size_t used_memory_ = 0;
   // percentage of reserved memory
   int reserve_;
-  // number of devices
-  const int NDEV = 32;
   // memory pool
-  std::unordered_map<size_t, std::vector<void*>> memory_pool_;
+  std::array<std::vector<void*>, 64> memory_pool_;
   DISALLOW_COPY_AND_ASSIGN(GPUPooledStorageManager);
 };  // class GPUPooledStorageManager
 
 void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
+  int log2_size = log2_round_up(handle->size);
+  size_t size = 1ul << log2_size;
+  auto&& reuse_pool = memory_pool_[log2_size];
   std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
-  size_t size = handle->size + NDEV;
-  auto&& reuse_it = memory_pool_.find(size);
-  if (reuse_it == memory_pool_.end() || reuse_it->second.size() == 0) {
+  if (reuse_pool.size() == 0) {
     size_t free, total;
     cudaMemGetInfo(&free, &total);
     if (free <= total * reserve_ / 100 || size > free - total * reserve_ / 100)
@@ -110,7 +114,6 @@ void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
     used_memory_ += size;
     handle->dptr = ret;
   } else {
-    auto&& reuse_pool = reuse_it->second;
     auto ret = reuse_pool.back();
     reuse_pool.pop_back();
     handle->dptr = ret;
@@ -118,22 +121,22 @@ void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
 }
 
 void GPUPooledStorageManager::Free(Storage::Handle handle) {
+  int log2_size = log2_round_up(handle.size);
+  auto&& reuse_pool = memory_pool_[log2_size];
   std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
-  size_t size = handle.size + NDEV;
-  auto&& reuse_pool = memory_pool_[size];
   reuse_pool.push_back(handle.dptr);
 }
 
 void GPUPooledStorageManager::ReleaseAll() {
-  for (auto&& i : memory_pool_) {
-    for (auto&& j : i.second) {
-      Storage::Handle handle;
+  Storage::Handle handle;
+  for (size_t i = 0; i < memory_pool_.size(); i++) {
+    handle.size = 1ul << i;
+    for (auto& j : memory_pool_[i]) {
       handle.dptr = j;
-      handle.size = i.first - NDEV;
       DirectFreeNoLock(handle);
     }
+    memory_pool_[i].clear();
   }
-  memory_pool_.clear();
 }
 
 #endif  // MXNET_USE_CUDA
