@@ -54,10 +54,10 @@ class GPUPooledStorageManager final : public StorageManager {
    */
   GPUPooledStorageManager() {
     reserve_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_RESERVE", 5);
-    min_chunk_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_MIN_CHUNK", 4096);
-    if (min_chunk_ < NDEV) {
-      LOG(FATAL) << "MXNET_GPU_MEM_POOL_MIN_CHUNK cannot be set to a value smaller than " << NDEV \
-                 << ". Got " << min_chunk_ << ".";
+    page_size_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_PAGE_SIZE", 4096);
+    if (page_size_ < NDEV) {
+      LOG(FATAL) << "MXNET_GPU_MEM_POOL_PAGE_SIZE cannot be set to a value smaller than " << NDEV \
+                 << ". Got " << page_size_ << ".";
     }
   }
   /*!
@@ -78,7 +78,7 @@ class GPUPooledStorageManager final : public StorageManager {
  private:
   void DirectFreeNoLock(Storage::Handle handle) {
     cudaError_t err = cudaFree(handle.dptr);
-    size_t size = std::max(handle.size, min_chunk_);
+    size_t size = std::max(handle.size, page_size_);
     // ignore unloading error, as memory has already been recycled
     if (err != cudaSuccess && err != cudaErrorCudartUnloading) {
       LOG(FATAL) << "CUDA: " << cudaGetErrorString(err);
@@ -89,7 +89,9 @@ class GPUPooledStorageManager final : public StorageManager {
  private:
   void ReleaseAll();
   // used memory
-  size_t used_memory_ = 0, min_chunk_;
+  size_t used_memory_ = 0;
+  // page size
+  size_t page_size_;
   // percentage of reserved memory
   int reserve_;
   // number of devices
@@ -101,7 +103,7 @@ class GPUPooledStorageManager final : public StorageManager {
 
 void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
   std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
-  size_t size = std::max(handle->size, min_chunk_);
+  size_t size = std::max(handle->size, page_size_);
   auto&& reuse_it = memory_pool_.find(size);
   if (reuse_it == memory_pool_.end() || reuse_it->second.size() == 0) {
     size_t free, total;
@@ -126,7 +128,7 @@ void GPUPooledStorageManager::Alloc(Storage::Handle* handle) {
 
 void GPUPooledStorageManager::Free(Storage::Handle handle) {
   std::lock_guard<std::mutex> lock(Storage::Get()->GetMutex(Context::kGPU));
-  size_t size = std::max(handle.size, min_chunk_);
+  size_t size = std::max(handle.size, page_size_);
   auto&& reuse_pool = memory_pool_[size];
   reuse_pool.push_back(handle.dptr);
 }
@@ -164,26 +166,26 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
    */
   GPUPooledRoundedStorageManager() {
     reserve_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_RESERVE", 5);
-    min_chunk_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_MIN_CHUNK", 4096);
+    page_size_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_PAGE_SIZE", 4096);
     cut_off_ = dmlc::GetEnv("MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF", 24);
-    if (min_chunk_ < 32) {
-      LOG(FATAL) << "MXNET_GPU_MEM_POOL_MIN_CHUNK cannot be set to a value smaller than 32. " \
-                 << "Got: " << min_chunk_ << ".";
+    if (page_size_ < 32) {
+      LOG(FATAL) << "MXNET_GPU_MEM_POOL_PAGE_SIZE cannot be set to a value smaller than 32. " \
+                 << "Got: " << page_size_ << ".";
     }
-    if (min_chunk_ != 1ul << log2_round_up(min_chunk_)) {
-      LOG(FATAL) << "MXNET_GPU_MEM_POOL_MIN_CHUNK must be a power of 2. Got: " << min_chunk_ << ".";
+    if (page_size_ != 1ul << log2_round_up(page_size_)) {
+      LOG(FATAL) << "MXNET_GPU_MEM_POOL_PAGE_SIZE must be a power of 2. Got: " << page_size_ << ".";
     } else {
-      min_chunk_ = log2_round_up(min_chunk_);
+      page_size_ = log2_round_up(page_size_);
     }
     if (cut_off_ < 20 || cut_off_ > LOG2_MAX_MEM) {
       LOG(FATAL) << "MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF cannot be set to a value " \
                  << "smaller than 20 or greater than " << LOG2_MAX_MEM << ". Got: " \
                  << cut_off_ << ".";
     }
-    if (cut_off_ < min_chunk_) {
+    if (cut_off_ < page_size_) {
       LOG(FATAL) << "MXNET_GPU_MEM_POOL_ROUND_LINEAR_CUTOFF cannot be set to a value " \
-                 << "smaller than log2 of MXNET_GPU_MEM_POOL_MIN_CHUNK. Got: " \
-                 << cut_off_ << " vs " << min_chunk_ << ".";
+                 << "smaller than log2 of MXNET_GPU_MEM_POOL_PAGE_SIZE. Got: " \
+                 << cut_off_ << " vs " << page_size_ << ".";
     }
     memory_pool_ = std::vector<std::vector<void*>>((1ul << (LOG2_MAX_MEM - cut_off_)) + cut_off_);
   }
@@ -275,7 +277,7 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
     if (log_size > static_cast<int>(cut_off_))
       return div_pow2_round_up(s, cut_off_) - 1 + cut_off_;
     else
-      return std::max(log_size, static_cast<int>(min_chunk_));
+      return std::max(log_size, static_cast<int>(page_size_));
   }
 
   inline size_t get_size(int bucket) {
@@ -298,10 +300,16 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
   void ReleaseAll();
   // number of devices
   const int NDEV = 32;
+  // log2 of maximum page size. 16GB
   const size_t LOG2_MAX_MEM = 34;
+  // address width in bits
   static const int addr_width = sizeof(size_t) * 8;
   // used memory
-  size_t used_memory_ = 0, min_chunk_, cut_off_;
+  size_t used_memory_ = 0;
+  // page size
+  size_t page_size_;
+  // log2 of memory size before switching to exponential mode to linear mode
+  size_t cut_off_;
   // percentage of reserved memory
   int reserve_;
   // memory pool
