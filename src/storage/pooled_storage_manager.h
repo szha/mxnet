@@ -27,7 +27,14 @@
 
 #if MXNET_USE_CUDA
   #include <cuda_runtime.h>
+  #if defined(_MSC_VER)
+    #include <Windows.h>
+    #include <intrin.h>
+    #pragma intrinsic(_BitScanForward)
+    #pragma intrinsic(_BitScanForward64)
+  #endif  // defined(_MSC_VER)
 #endif  // MXNET_USE_CUDA
+
 #include <mxnet/base.h>
 #include <mxnet/storage.h>
 #include <unordered_map>
@@ -212,46 +219,46 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
 #define clz(x) __builtin_clzl(x)
 #define ctz(x) __builtin_ctzl(x)
 
-#elif defined(__WINDOWS__)
+#elif defined(_MSC_VER)
 #define clz(x) __lzcnt64(x)
-  uint64_t __inline ctz(uint64_t value) {
-    QWORD trailing_zero = 0;
-    _BitScanForward64(&trailing_zero, value)
-    return trailing_zero;
-  }
-  uint64_t __inline clz(uint64_t value) {
-    QWORD leading_zero = 0;
-    _BitScanReverse64(&leading_zero, value)
-    return 63 - leading_zero;
+  int __inline ctz(size_t value) {
+    DWORD trailing_zero = 0;
+    _BitScanForward64(&trailing_zero, value);
+    return static_cast<int>(trailing_zero);
   }
 
+#else
+#define clz(x) flsl(x)
+#define ctz(x) ffsl(x)
+
 #endif  // defined(__clang__) || defined(__GNUC__)
+
 
 #elif __SIZEOF_SIZE_T__ == __SIZEOF_INT__
 
-#if defined(__clang__) || defined(__GNUC__) || defined(__WINDOWS__)
+#if defined(__clang__) || defined(__GNUC__)
 #define clz(x) __builtin_clz(x)
 #define ctz(x) __builtin_ctz(x)
 
-#elif defined(__WINDOWS__)
-  uint32_t __inline clz(uint32_t value) {
-    DWORD leading_zero = 0;
-    _BitScanReverse(&leading_zero, value)
-    return 31 - leading_zero;
-  }
-  uint32_t __inline ctz(uint32_t value) {
+#elif defined(_MSC_VER)
+#define clz(x) __lzcnt(x)
+  int __inline ctz(size_t value) {
     DWORD trailing_zero = 0;
-    _BitScanForward(&trailing_zero, value)
-    return trailing_zero;
+    _BitScanForward(&trailing_zero, value);
+    return static_cast<int>(trailing_zero);
   }
+
+#else
+#define clz(x) fls(x)
+#define ctz(x) ffs(x)
 
 #endif  // defined(__clang__) || defined(__GNUC__)
+
 #endif  // __SIZEOF_SIZE_T__
 
-#if defined(__clang__) || defined(__GNUC__) || defined(__WINDOWS__)
   inline int log2_round_up(size_t s) {
     int result = addr_width - 1 - clz(s);
-    return result + ((ctz(s) < result)?1:0);
+    return result + ((ctz(s) < result) ? 1 : 0);
   }
   inline int div_pow2_round_up(size_t s, int divisor_log2) {
     // (1025, 10) -> 2
@@ -260,18 +267,6 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
     int ffs = ctz(s);  // find first set
     return (s >> divisor_log2) + (ffs < divisor_log2 ? 1 : 0);
   }
-#else
-  inline int log2_round_up(size_t s) {
-    return static_cast<int>(std::ceil(std::log2(s)));
-  }
-  inline int div_pow2_round_up(size_t s, int divisor_log2) {
-    // (1025, 10) -> 2
-    // (2048, 10) -> 2
-    // (2049, 10) -> 3
-    int divisor = std::pow(2, divisor_log2);
-    return s / divisor + (s % divisor ? 1 : 0);
-  }
-#endif  // defined(__clang__) || defined(__GNUC__) || defined(__WINDOWS__)
   inline int get_bucket(size_t s) {
     int log_size = log2_round_up(s);
     if (log_size > static_cast<int>(cut_off_))
@@ -279,7 +274,6 @@ class GPUPooledRoundedStorageManager final : public StorageManager {
     else
       return std::max(log_size, static_cast<int>(page_size_));
   }
-
   inline size_t get_size(int bucket) {
     if (bucket <= static_cast<int>(cut_off_))
       return 1ul << bucket;
