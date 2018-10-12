@@ -386,9 +386,9 @@ def unroll(cell, inputs, begin_state, drop_inputs=0, drop_outputs=0,
         axes[axis] = tmp
         inputs = F.transpose(inputs, axes=axes)
     states = begin_state
-     if drop_inputs:
+    if drop_inputs:
         inputs = F.Dropout(inputs, p=drop_inputs, axes=(axis,))
-     if valid_length is None:
+    if valid_length is None:
         def loop_body(inputs, states):
             return cell(inputs, states)
     else:
@@ -406,7 +406,7 @@ def unroll(cell, inputs, begin_state, drop_inputs=0, drop_outputs=0,
                                         new_states[i], state)
             new_states.append(iter_no + 1)
             return out, new_states
-     outputs, states = F.contrib.foreach(loop_body, inputs, states)
+    outputs, states = F.contrib.foreach(loop_body, inputs, states)
     if drop_outputs:
         outputs = F.Dropout(outputs, p=drop_outputs, axes=(axis,))
     if valid_length is not None:
