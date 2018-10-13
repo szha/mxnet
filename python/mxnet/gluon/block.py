@@ -32,6 +32,8 @@ from ..symbol import Symbol
 from ..ndarray import NDArray
 from .. import name as _name
 from .parameter import Parameter, ParameterDict, DeferredInitializationError
+from . import fold
+from .fold import NDArrayFuture, is_batching, create_ndarray_future
 from .utils import _indent, _brief_print_list, HookHandle
 
 
@@ -903,6 +905,24 @@ class HybridBlock(Block):
     def forward(self, x, *args):
         """Defines the forward computation. Arguments can be either
         :py:class:`NDArray` or :py:class:`Symbol`."""
+        if is_batching():
+            if isinstance(x, NDArray):
+                # init to ndarray future
+                x = create_ndarray_future(x)
+            if isinstance(x, NDArrayFuture):
+                with x.context as ctx:
+                    try:
+                        params = {i: j.data(ctx) for i, j in self._reg_params.items()}
+                    except DeferredInitializationError:
+                        self._deferred_infer_shape(x, *args)
+                        for _, i in self.params.items():
+                            i._finish_deferred_init()
+                        params = {i: j.data(ctx) for i, j in self._reg_params.items()}
+                    # defer execution
+                    return self.hybrid_forward(fold, x, *args, **params)
+            raise ValueError, 'wrong flow'
+
+
         if isinstance(x, NDArray):
             with x.context as ctx:
                 if self._active:

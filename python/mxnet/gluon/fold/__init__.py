@@ -15,28 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# coding: utf-8
-# pylint: disable=wildcard-import
-"""Neural network module."""
+"""NDArray API of MXNet."""
 
-from .parameter import *
+from . import op, fold
+from .op import *
+from .fold import *
 
-from .block import *
-
-from . import nn
-
-from . import rnn
-
-from .trainer import *
-
-from . import loss
-
-from . import fold
-
-from . import utils
-
-from . import data
-
-from . import model_zoo
-
-from . import contrib
+__all__ = op.__all__ + fold.__all__ + \
+          ['contrib', 'linalg', 'random', 'sparse', 'image']

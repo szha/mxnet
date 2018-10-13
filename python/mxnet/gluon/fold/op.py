@@ -16,27 +16,7 @@
 # under the License.
 
 # coding: utf-8
-# pylint: disable=wildcard-import
-"""Neural network module."""
+# pylint: disable=wildcard-import, unused-wildcard-import, redefined-builtin
+"""Backend ops in mxnet.ndarray namespace"""
 
-from .parameter import *
-
-from .block import *
-
-from . import nn
-
-from . import rnn
-
-from .trainer import *
-
-from . import loss
-
-from . import fold
-
-from . import utils
-
-from . import data
-
-from . import model_zoo
-
-from . import contrib
+__all__ = []
