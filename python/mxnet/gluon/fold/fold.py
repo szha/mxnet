@@ -120,6 +120,7 @@ class Fold(object):
         self.exec_list = []
 
     def record(self, op_name, future, inputs, attrs):
+        print('record {0}'.format(op_name))
         # setup input depth
         for arg in inputs:
             if arg not in self.depths:
@@ -140,21 +141,14 @@ class Fold(object):
         concat_op = _OpRecord('concat', concat_out, inputs, concat_attrs)
         return concat_out, concat_op
 
-    def _split_output(self, new_op_out, futures, num_batches):
-        indices = [0]
-        acc = 0
-        for num_batch in num_batches:
-            acc += num_batch
-            indices.append(acc)
-        split_ops = []
-        for i in range(1, len(indices)):
-            split_attrs = {'axis': 0, 'begin': indices[i - 1], 'end': indices[i]}
-            split_op = _OpRecord('slice_axis', futures[i - 1], [new_op_out], split_attrs)
-            split_ops.append(split_op)
-        return split_ops
+    def _split_output(self, new_op_out, futures, concat_arrs):
+        split_attrs = {'concat_arrs': concat_arrs, 'futures': futures, 'inputs': [new_op_out]}
+        # placeholder for split
+        split_op = _OpRecord('deferred_split', None, None, split_attrs)
+        return split_op
 
     def batch(self):
-        # TODO replace other inputs with changed output
+        print('max step: {0}'.format(self.max_step))
         for step in range(self.max_step + 1):
             for op_sig in self.steps[step]:
                 old_ops = self.steps[step][op_sig]
@@ -172,19 +166,35 @@ class Fold(object):
                 new_op = _OpRecord(op_name, new_op_out, new_op_in, attrs)
                 self.exec_list.append(new_op)
 
-                # TODO no shape info before execution
-                num_batches = [16] * len(old_ops)
-                split_ops = self._split_output(new_op_out, futures, num_batches)
-                self.exec_list += split_ops
+                deferred_split_op = self._split_output(new_op_out, futures, inputs)
+                self.exec_list.append(deferred_split_op)
 
     def execute(self):
-        # print('exec list')
-        # for op in self.exec_list:
-        #     print(op)
-        for record in self.exec_list:
+        def execute_record(record):
             op = getattr(ndarray, record.op_name)
             out = op(*record.inputs, **record.attrs)
             record.future.instantiate(out)
+
+        for record in self.exec_list:
+            # handle deferred_split
+            if record.op_name == "deferred_split":
+                concat_arrs = record.attrs['concat_arrs']
+                futures = record.attrs['futures']
+                inputs = record.attrs['inputs']
+
+                indices = [0]
+                acc = 0
+                for num_batch in [arr.shape[0] for arr in concat_arrs]:
+                    acc += num_batch
+                    indices.append(acc)
+                split_ops = []
+                for i in range(1, len(indices)):
+                    split_attrs = {'axis': 0, 'begin': indices[i - 1], 'end': indices[i]}
+                    split_op = _OpRecord('slice_axis', futures[i - 1], inputs, split_attrs)
+                    execute_record(split_op)
+                break
+
+            execute_record(record)
 
     def clear(self):
         pass

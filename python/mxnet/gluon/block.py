@@ -27,6 +27,7 @@ import re
 from collections import OrderedDict
 
 from ..base import mx_real_t
+from ..context import cpu
 from .. import symbol, ndarray, initializer
 from ..symbol import Symbol
 from ..ndarray import NDArray
@@ -906,11 +907,11 @@ class HybridBlock(Block):
         """Defines the forward computation. Arguments can be either
         :py:class:`NDArray` or :py:class:`Symbol`."""
         if is_batching():
-            if isinstance(x, NDArray):
+            if isinstance(x, NDArray) and not isinstance(x, NDArrayFuture):
                 # init to ndarray future
                 x = create_ndarray_future(x)
             if isinstance(x, NDArrayFuture):
-                with x.context as ctx:
+                with cpu() as ctx:
                     try:
                         params = {i: j.data(ctx) for i, j in self._reg_params.items()}
                     except DeferredInitializationError:
@@ -918,6 +919,7 @@ class HybridBlock(Block):
                         for _, i in self.params.items():
                             i._finish_deferred_init()
                         params = {i: j.data(ctx) for i, j in self._reg_params.items()}
+                        return self.hybrid_forward(ndarray, x, *args, **params)
                     # defer execution
                     return self.hybrid_forward(fold, x, *args, **params)
             raise ValueError, 'wrong flow'
