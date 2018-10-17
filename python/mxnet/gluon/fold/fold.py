@@ -27,16 +27,15 @@ import sys
 from collections import namedtuple, defaultdict
 
 from ... import ndarray
+from ... import symbol
 from ...base import check_call, _LIB, py_str
 from ...ndarray import NDArray
 
 # TODO
 # - improve ndarray future
-# - op signature
-# - infer batch axis
-# - multiple outputs
 # - optimize batch algorithm
 
+# NOTE: future and inputs should be tuple
 _OpRecord = namedtuple('OpRecord', ['op_name', 'future', 'inputs', 'attrs'])
 OpSig = namedtuple('OpSig', ['op', 'fmt', 'batch_axis'])
 
@@ -107,14 +106,6 @@ def create_ndarray_future(arr=None):
         future.instantiate(arr)
     return future
 
-
-def calculate_signature(op_name, args, kwargs):
-    batch_axis = 0
-    flat_args, fmt = _flatten((args, kwargs))
-    op_sig = OpSig(op_name, fmt, batch_axis)
-    return hash(op_sig) # MAGIC!
-
-
 def _flatten(args):
     if isinstance(args, (list, tuple)):
         flat = []
@@ -127,16 +118,32 @@ def _flatten(args):
     else:
         return (args,), int(0)
 
-def get_output_futures(op_name):
-    num_outputs = 1
-    if op_name == 'split':
-        num_outputs = 2
-    if num_outputs > 1:
-        futures = tuple([create_ndarray_future() for i in range(num_outputs)])
-    else:
-        futures = create_ndarray_future()
-    return futures
+OP_BATCH_AXIS = {}
 
+def register_attr(op_name, fbatch_axis):
+    global OP_BATCH_AXIS
+    OP_BATCH_AXIS[op_name] = fbatch_axis
+
+register_attr('FullyConnected', lambda x, y: 0)
+register_attr('split', lambda x, y: 0)
+
+def infer_batch_axis(op_name, args, kwargs):
+    print('infer batch axis of {0}'.format(op_name))
+    if op_name in OP_BATCH_AXIS:
+        return OP_BATCH_AXIS[op_name](args, kwargs)
+    else:
+        return None
+
+def calculate_signature(op_name, args, kwargs):
+    batch_axis = infer_batch_axis(op_name, args, kwargs)
+    flat_args, fmt = _flatten((args, kwargs))
+    op_sig = OpSig(op_name, fmt, batch_axis)
+    return op_sig
+
+def get_num_outputs(op_name, args, kwargs):
+    fsym = getattr(symbol, op_name)
+    sym = fsym(*[symbol.var('x') for _ in args], **kwargs)
+    return len(sym.list_outputs())
 
 # algorithm part for dynamic batching
 class Fold(object):
@@ -157,18 +164,23 @@ class Fold(object):
 
         step = max([self.depths[arg] for arg in inputs]) + 1
         self.max_step = max(step, self.max_step)
-        self.depths[future] = step
+        for out in future:
+            self.depths[out] = step
         op_sig = calculate_signature(op_name, inputs, attrs)
+        assert isinstance(future, tuple)
+        assert isinstance(inputs, tuple)
         self.steps[step][op_sig].append(_OpRecord(op_name, future, inputs, attrs))
 
-    def _concat_inputs(self, inputs):
-        concat_attrs = {'dim': 0}
+    def _concat_inputs(self, inputs, batch_axis):
+        assert isinstance(inputs, tuple)
+        concat_attrs = {'dim': batch_axis}
         concat_out = create_ndarray_future()
-        concat_op = _OpRecord('concat', concat_out, inputs, concat_attrs)
+        concat_op = _OpRecord('concat', (concat_out,), inputs, concat_attrs)
         return concat_out, concat_op
 
-    def _split_output(self, new_op_out, futures, concat_arrs):
-        split_attrs = {'concat_arrs': concat_arrs, 'futures': futures, 'inputs': [new_op_out]}
+    def _split_output(self, new_op_out, futures, concat_arrs, batch_axis):
+        split_attrs = {'concat_arrs': concat_arrs, 'futures_list': futures,
+            'inputs': (new_op_out,), 'batch_axis': batch_axis}
         # placeholder for split
         split_op = _OpRecord('deferred_split', None, None, split_attrs)
         return split_op
@@ -177,65 +189,69 @@ class Fold(object):
         print('max step: {0}'.format(self.max_step))
         for step in range(self.max_step + 1):
             for op_sig in self.steps[step]:
+                batch_axis = op_sig.batch_axis
                 old_ops = self.steps[step][op_sig]
                 op_name = old_ops[0].op_name
-                futures = [op.future for op in old_ops]
-                inputs = [op.inputs[0] for op in old_ops]
-                params = old_ops[0].inputs[1:]
+                futures_list = [op.future for op in old_ops]
+                num_outputs = len(old_ops[0].future)
+                # TODO: for now, only batch first input
+                inputs = tuple([op.inputs[0] for op in old_ops])
+                params = tuple(old_ops[0].inputs[1:])
                 attrs = old_ops[0].attrs
 
-                concat_out, concat_op = self._concat_inputs(inputs)
+                if batch_axis is None:
+                    # do not batch
+                    self.exec_list += old_ops
+                    continue
+
+                concat_out, concat_op = self._concat_inputs(inputs, batch_axis)
                 self.exec_list.append(concat_op)
 
                 new_op_in = (concat_out, ) + params
-                new_op_out = get_output_futures(op_name)
+                new_op_out = tuple([create_ndarray_future() for _ in range(num_outputs)])
                 new_op = _OpRecord(op_name, new_op_out, new_op_in, attrs)
                 self.exec_list.append(new_op)
 
-                deferred_split_op = self._split_output(new_op_out, futures, inputs)
+                deferred_split_op = self._split_output(new_op_out, futures_list, inputs, batch_axis)
                 self.exec_list.append(deferred_split_op)
 
-    def execute(self):
-        def execute_record(record):
-            print('executing %s'%record.op_name)
-            op = getattr(ndarray, record.op_name)
-            out = op(*record.inputs, **record.attrs)
-            if isinstance(out, (list, tuple)):
-                num_outs = len(out)
-                assert len(out) == len(record.future)
-                for i in range(num_outs):
-                    record.future[i].instantiate(out[i])
-            else:
-                record.future.instantiate(out)
-            print('done %s'%record.op_name)
+    def execute_record(self, record):
+        print('executing %s' % record.op_name)
+        op = getattr(ndarray, record.op_name)
+        out = op(*record.inputs, **record.attrs)
+        if isinstance(out, (list, tuple)):
+            num_outs = len(out)
+            assert num_outs == len(record.future)
+            for i in range(num_outs):
+                record.future[i].instantiate(out[i])
+        else:
+            record.future[0].instantiate(out)
+        print('done %s'%record.op_name)
 
+    def execute(self):
         for record in self.exec_list:
             # handle deferred_split
             if record.op_name == "deferred_split":
                 concat_arrs = record.attrs['concat_arrs']
-                futures = record.attrs['futures']
+                futures_list = record.attrs['futures_list']
                 inputs = record.attrs['inputs']
+                batch_axis = record.attrs['batch_axis']
 
                 indices = [0]
                 acc = 0
-                for num_batch in [arr.shape[0] for arr in concat_arrs]:
+                for num_batch in [arr.shape[batch_axis] for arr in concat_arrs]:
                     acc += num_batch
                     indices.append(acc)
                 split_ops = []
                 for i in range(1, len(indices)):
-                    split_attrs = {'axis': 0, 'begin': indices[i - 1], 'end': indices[i]}
-                    num_outputs = len(futures[i - 1]) if isinstance(futures[i - 1], (tuple, list)) else 1
-                    if num_outputs == 1:
-                        # futures[i - 1] stores the output future for (i-1)th sample
-                        split_op = _OpRecord('slice_axis', futures[i - 1], inputs, split_attrs)
-                        execute_record(split_op)
-                    else:
-                        assert len(futures[i - 1]) == len(inputs[0])
-                        for j in range(num_outputs):
-                            split_op = _OpRecord('slice_axis', futures[i - 1][j], (inputs[0][j],), split_attrs)
-                            execute_record(split_op)
+                    split_attrs = {'axis': batch_axis, 'begin': indices[i - 1], 'end': indices[i]}
+                    num_outputs = len(futures_list[i - 1])
+                    # assert len(futures[i - 1]) == len(inputs[0])
+                    for j in range(num_outputs):
+                        split_op = _OpRecord('slice_axis', (futures_list[i - 1][j],), (inputs[0][j],), split_attrs)
+                        self.execute_record(split_op)
             else:
-                execute_record(record)
+                self.execute_record(record)
 
     def clear(self):
         pass
@@ -285,8 +301,11 @@ def _make_op_func(name, func_name):
 def {0}(*args, **kwargs):
     batching = _current_batching_scope()
     op_name = sys._getframe().f_code.co_name
-    futures = get_output_futures(op_name)
+    num_outputs = get_num_outputs(op_name, args, kwargs)
+    futures = tuple([create_ndarray_future() for _ in range(num_outputs)])
     batching.record(op_name, futures, args, kwargs)
+    if num_outputs == 1:
+        return futures[0]
     return futures
     """.format(func_name)
     doc_str = ""
