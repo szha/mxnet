@@ -20,6 +20,7 @@
 
 from . import symbol
 from . import ndarray
+from . import fold
 
 from . import symbol as sym
 from . import ndarray as nd

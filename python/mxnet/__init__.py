@@ -63,6 +63,8 @@ from .attribute import AttrScope
 from . import monitor
 from . import monitor as mon
 
+from . import fold
+
 from . import torch
 from . import torch as th
 

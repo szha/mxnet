@@ -15,11 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""NDArray API of MXNet."""
+# coding: utf-8
+# pylint: disable=wildcard-import, unused-wildcard-import, too-many-lines
+"""Sparse NDArray API of MXNet."""
 
-from . import op, fold
-from .op import *
-from .fold import *
-
-__all__ = op.__all__ + fold.__all__ + \
-          ['contrib', 'linalg', 'random', 'sparse', 'image']
+__all__ = []

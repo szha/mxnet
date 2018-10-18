@@ -18,6 +18,7 @@
 # coding: utf-8
 # pylint: disable=
 """fold for dynamic batching."""
+from __future__ import absolute_import
 __all__ = ['batching', 'is_batching', 'NDArrayFuture', 'create_ndarray_future']
 
 import numpy as np
@@ -26,10 +27,10 @@ import random
 import sys
 from collections import namedtuple, defaultdict
 
-from ... import ndarray
-from ... import symbol
-from ...base import check_call, _LIB, py_str
-from ...ndarray import NDArray
+from .. import ndarray
+from .. import symbol
+from ..base import check_call, _LIB, py_str, _init_op_module
+from ..ndarray import NDArray
 
 # TODO
 # - improve ndarray future
@@ -295,7 +296,7 @@ class _BatchingScope(object):
         self._fold.record(op, out, args, kwargs)
 
 
-def _make_op_func(name, func_name):
+def _make_op_func(hdl, name, func_name):
     """Create a NDArray function from the FunctionHandle."""
     code = """
 def {0}(*args, **kwargs):
@@ -315,25 +316,8 @@ def {0}(*args, **kwargs):
     op_function = local[func_name]
     op_function.__name__ = func_name
     op_function.__doc__ = doc_str
-    op_function.__module__ = 'mxnet.gluon.fold.op'
+    op_function.__module__ = 'mxnet.fold.op'
     return op_function
 
-def _init_ops():
-    plist = ctypes.POINTER(ctypes.c_char_p)()
-    size = ctypes.c_uint()
 
-    check_call(_LIB.MXListAllOpNames(ctypes.byref(size),
-                                     ctypes.byref(plist)))
-    op_names = []
-    for i in range(size.value):
-        op_names.append(py_str(plist[i]))
-
-    for name in op_names:
-        func_name = name
-        function = _make_op_func(name, func_name)
-        cur_module = sys.modules['mxnet.gluon.fold.op']
-        function.__module__ = cur_module
-        setattr(cur_module, function.__name__, function)
-        cur_module.__all__.append(function.__name__)
-
-_init_ops()
+_init_op_module('mxnet', 'fold', _make_op_func)

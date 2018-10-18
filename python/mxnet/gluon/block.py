@@ -32,9 +32,9 @@ from .. import symbol, ndarray, initializer
 from ..symbol import Symbol
 from ..ndarray import NDArray
 from .. import name as _name
+from .. import fold
+from ..fold import NDArrayFuture, is_batching, create_ndarray_future
 from .parameter import Parameter, ParameterDict, DeferredInitializationError
-from . import fold
-from .fold import NDArrayFuture, is_batching, create_ndarray_future
 from .utils import _indent, _brief_print_list, HookHandle
 
 
