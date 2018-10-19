@@ -97,50 +97,16 @@ def test_fold_rnn():
        params1 = cell.collect_params()
        orig_params1 = copy.deepcopy(params1)
        trainer = gluon.Trainer(params1, 'sgd', {'learning_rate' : 0.03})
-       with mx.autograd.record():
+       with fd.batching():
            res1, states1 = cell.unroll(seq_len, rnn_data, states, valid_length=valid_length,
                                        layout=layout, merge_outputs=True)
-       res1.backward()
-       trainer.step(batch_size)
-       configs = [
-               lambda layer: None,
-               lambda layer: layer.hybridize(),
-               lambda layer: layer.hybridize({'inline_limit': 0}),
-               lambda layer: layer.hybridize({'static_alloc': True}),
-               lambda layer: layer.hybridize({'static_alloc': True, 'static_shape': True}) ]
-       # We can't pass None to a hybrid block, but it accepts an empty list.
-       # so we use an empty list to represent valid_length if it's None.
-       if valid_length is None:
-           valid_length = []
-       for config in configs:
-           layer = TestRNNLayer(cell_type, hidden_size, layout)
-           layer.initialize(ctx=default_context())
-           config(layer)
-           res2, states2 = layer(rnn_data, states, valid_length)
-           params2 = layer.collect_params()
-           for key, val in orig_params1.items():
-               params2[key].set_data(copy.deepcopy(val.data()))
-           trainer = gluon.Trainer(params2, 'sgd', {'learning_rate' : 0.03})
-           with mx.autograd.record():
-               res2, states2 = layer(rnn_data, states, valid_length)
-           assert_almost_equal(res1.asnumpy(), res2.asnumpy(), rtol=0.001, atol=0.0001)
-           assert len(states1) == len(states2)
-           for i in range(len(states1)):
-               assert_almost_equal(states1[i].asnumpy(), states2[i].asnumpy(),
-                                   rtol=0.001, atol=0.0001)
-           res2.backward()
-           trainer.step(batch_size)
-           for key, val in params1.items():
-               weight1 = val.data()
-               weight2 = params2[key].data()
-               assert_almost_equal(weight1.asnumpy(), weight2.asnumpy(),
-                       rtol=0.001, atol=0.0001)
 
-    cell_types = [(gluon.rnn.RNNCell, 1), (gluon.rnn.LSTMCell, 2),
-            (gluon.rnn.GRUCell, 1)]
-    for cell_type, num_states in cell_types:
-        check_unroll(cell_type, num_states, 'TNC')
-        check_unroll(cell_type, num_states, 'NTC')
+    check_unroll(gluon.rnn.RNNCell, 1, 'NTC')
+    # cell_types = [(gluon.rnn.RNNCell, 1), (gluon.rnn.LSTMCell, 2),
+    #         (gluon.rnn.GRUCell, 1)]
+    # for cell_type, num_states in cell_types:
+    #     check_unroll(cell_type, num_states, 'TNC')
+    #     check_unroll(cell_type, num_states, 'NTC')
 
 
 
@@ -163,5 +129,5 @@ def test_fold_foreach():
 if __name__ == '__main__':
     # test_fold_mlp()
     # test_fold_multi_out()
-    # test_fold_rnn()
-    test_fold_foreach()
+    test_fold_rnn()
+    # test_fold_foreach()
