@@ -178,9 +178,6 @@ def get_num_outputs(op_name, args, kwargs):
             new_args.append(new_arg)
         else:
             new_args.append(arg)
-    print(new_args)
-    print(kwargs)
-    # TODO handle list of ndarray
     sym = fsym(*new_args, **kwargs)
     return len(sym.list_outputs())
 
