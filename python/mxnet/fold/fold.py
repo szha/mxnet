@@ -29,6 +29,7 @@ from collections import namedtuple, defaultdict
 
 from .. import ndarray
 from .. import symbol
+from . import op
 from ..base import check_call, _LIB, py_str, _get_op_name_prefix
 from ..ndarray import NDArray
 
@@ -101,6 +102,11 @@ class NDArrayFuture(NDArray):
         else:
             return NDArray.__getattribute__(self, attr)
 
+    def __add__(self, other):
+        """x.__add__(y) <=> x+y <=> mx.nd.add(x, y) """
+        print('NDArray Future add')
+        return op.broadcast_add(self, other)
+
 def create_ndarray_future(arr=None):
     future = NDArrayFuture()
     if arr is not None:
@@ -162,6 +168,9 @@ def parse_name(name, mod_name=None):
         return cur_mod, func_name
 
 def get_num_outputs(op_name, args, kwargs):
+    # print('op_name: {0}'.format(op_name))
+    # print('args: {0}'.format(args))
+    # print('kwargs: {0}'.format(kwargs))
     mod, func_name = parse_name(op_name, mod_name='symbol')
     fsym = getattr(mod, func_name)
     new_args = []
@@ -190,6 +199,7 @@ class Fold(object):
         self.exec_list = []
 
     def record(self, op_name, future, inputs, attrs):
+        print('record {0}'.format(op_name))
         # setup input depth
         for arg in inputs:
             if arg not in self.depths:
@@ -223,6 +233,8 @@ class Fold(object):
 
     def batch(self):
         print('max step: {0}'.format(self.max_step))
+        print('exec list:')
+        print(self.exec_list)
         for step in range(self.max_step + 1):
             for op_sig in self.steps[step]:
                 batch_axis = op_sig.batch_axis
@@ -266,6 +278,7 @@ class Fold(object):
         print('done %s' % record.op_name)
 
     def execute(self):
+        print('execute')
         for record in self.exec_list:
             # handle deferred_split
             if record.op_name == "deferred_split":

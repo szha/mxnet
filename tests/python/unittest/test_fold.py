@@ -81,6 +81,7 @@ def test_fold_rnn():
        if layout == 'TNC':
            rnn_data = mx.nd.normal(loc=0, scale=1, shape=(seq_len, batch_size, input_size))
        elif layout == 'NTC':
+           # (20, 10, 50)
            rnn_data = mx.nd.normal(loc=0, scale=1, shape=(batch_size, seq_len, input_size))
        else:
            print("Wrong layout")
@@ -94,9 +95,6 @@ def test_fold_rnn():
            cell(rnn_data[0], states)
        else:
            cell(rnn_data[:,0,:], states)
-       params1 = cell.collect_params()
-       orig_params1 = copy.deepcopy(params1)
-       trainer = gluon.Trainer(params1, 'sgd', {'learning_rate' : 0.03})
        with fd.batching():
            res1, states1 = cell.unroll(seq_len, rnn_data, states, valid_length=valid_length,
                                        layout=layout, merge_outputs=True)

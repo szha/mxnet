@@ -392,10 +392,10 @@ class RNNCell(HybridRecurrentCell):
     def hybrid_forward(self, F, inputs, states, i2h_weight,
                        h2h_weight, i2h_bias, h2h_bias):
         prefix = 't%d_'%self._counter
-        i2h = F.FullyConnected(data=inputs, weight=i2h_weight, bias=i2h_bias,
+        i2h = F.FullyConnected(inputs, i2h_weight, i2h_bias,
                                num_hidden=self._hidden_size,
                                name=prefix+'i2h')
-        h2h = F.FullyConnected(data=states[0], weight=h2h_weight, bias=h2h_bias,
+        h2h = F.FullyConnected(states[0], h2h_weight, h2h_bias,
                                num_hidden=self._hidden_size,
                                name=prefix+'h2h')
         output = self._get_activation(F, i2h + h2h, self._activation,
