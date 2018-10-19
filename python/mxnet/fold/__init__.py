@@ -18,6 +18,7 @@
 """NDArray API of MXNet."""
 
 from . import _internal, contrib, linalg, op, random, sparse, image, fold
+from . import register
 from .op import *
 from .fold import *
 

@@ -29,7 +29,7 @@ from collections import namedtuple, defaultdict
 
 from .. import ndarray
 from .. import symbol
-from ..base import check_call, _LIB, py_str, _init_op_module
+from ..base import check_call, _LIB, py_str, _get_op_name_prefix
 from ..ndarray import NDArray
 
 # TODO
@@ -141,9 +141,47 @@ def calculate_signature(op_name, args, kwargs):
     op_sig = OpSig(op_name, fmt, batch_axis)
     return op_sig
 
+def parse_name(name, mod_name=None):
+    prefix = _get_op_name_prefix(name)
+    if len(prefix) > 0:
+        func_name = name[len(prefix):]
+        submodule_name = prefix[1:-1]
+    else:
+        func_name = name
+        submodule_name = ''
+
+    if mod_name is None:
+        return func_name
+    else:
+        assert mod_name in ['ndarray', 'symbol']
+        if len(submodule_name) > 0:
+            cur_mod_name = "{0}.{1}.{2}".format('mxnet', mod_name, submodule_name)
+        else:
+            cur_mod_name = "{0}.{1}".format('mxnet', mod_name)
+        cur_mod = sys.modules[cur_mod_name]
+        return cur_mod, func_name
+
 def get_num_outputs(op_name, args, kwargs):
-    fsym = getattr(symbol, op_name)
-    sym = fsym(*[symbol.var('x') for _ in args], **kwargs)
+    mod, func_name = parse_name(op_name, mod_name='symbol')
+    fsym = getattr(mod, func_name)
+    new_args = []
+    def _get_name():
+        _get_name.name_cnt += 1
+        return 'x{0}'.format(_get_name.name_cnt)
+    _get_name.name_cnt = 0
+    for arg in args:
+        if isinstance(arg, NDArray):
+            new_args.append(symbol.var(_get_name()))
+        # list of NDArray
+        elif isinstance(arg, (list, tuple)) and isinstance(arg[0], NDArray):
+            new_arg = [symbol.var(_get_name()) for _ in arg]
+            new_args.append(new_arg)
+        else:
+            new_args.append(arg)
+    print(new_args)
+    print(kwargs)
+    # TODO handle list of ndarray
+    sym = fsym(*new_args, **kwargs)
     return len(sym.list_outputs())
 
 # algorithm part for dynamic batching
@@ -218,7 +256,8 @@ class Fold(object):
 
     def execute_record(self, record):
         print('executing %s' % record.op_name)
-        op = getattr(ndarray, record.op_name)
+        mod, func_name = parse_name(record.op_name, 'ndarray')
+        op = getattr(mod, func_name)
         out = op(*record.inputs, **record.attrs)
         if isinstance(out, (list, tuple)):
             num_outs = len(out)
@@ -227,7 +266,7 @@ class Fold(object):
                 record.future[i].instantiate(out[i])
         else:
             record.future[0].instantiate(out)
-        print('done %s'%record.op_name)
+        print('done %s' % record.op_name)
 
     def execute(self):
         for record in self.exec_list:
@@ -294,30 +333,3 @@ class _BatchingScope(object):
 
     def record(self, op, out, args, kwargs):
         self._fold.record(op, out, args, kwargs)
-
-
-def _make_op_func(hdl, name, func_name):
-    """Create a NDArray function from the FunctionHandle."""
-    code = """
-def {0}(*args, **kwargs):
-    batching = _current_batching_scope()
-    op_name = sys._getframe().f_code.co_name
-    num_outputs = get_num_outputs(op_name, args, kwargs)
-    futures = tuple([create_ndarray_future() for _ in range(num_outputs)])
-    batching.record(op_name, futures, args, kwargs)
-    if num_outputs == 1:
-        return futures[0]
-    return futures
-    """.format(func_name)
-    doc_str = ""
-
-    local = {}
-    exec(code, None, local)  # pylint: disable=exec-used
-    op_function = local[func_name]
-    op_function.__name__ = func_name
-    op_function.__doc__ = doc_str
-    op_function.__module__ = 'mxnet.fold.op'
-    return op_function
-
-
-_init_op_module('mxnet', 'fold', _make_op_func)
