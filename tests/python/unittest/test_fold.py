@@ -10,17 +10,18 @@ from mxnet.test_utils import assert_almost_equal, default_context
 mx.random.seed(42)
 
 
-def check_gluon_net(net, ins):
+def check_gluon_net(net, *ins):
     net.initialize()
     outs0 = []
     outs1 = []
 
+    ins = zip(*ins)
     for x in ins:
-        outs0.append(net(x))
+        outs0.append(net(*x))
 
     with fd.batching():
         for x in ins:
-            outs1.append(net(x))
+            outs1.append(net(*x))
 
     for a, b in zip(outs0, outs1):
         if isinstance(a, (list, tuple)):
@@ -123,6 +124,31 @@ def test_fold_foreach():
     net = ForEachNet()
     ins = [nd.random_normal(shape=(2, 10)) for i in range(8)]
     check_gluon_net(net, ins)
+
+def test_fold_builtin():
+    class BuiltinNet(gluon.HybridBlock):
+        def __init__(self, **kwargs):
+            super(BuiltinNet, self).__init__(**kwargs)
+
+        def hybrid_forward(self, F, x, y):
+            x = x + y
+            x = x + 1
+            x = 1 + x
+            x = x - y
+            x = x - 1
+            x = 1 - x
+            x = -x
+            x = x * y
+            x = x * 1
+            x = 1 * x
+            x = x / y
+            x = x / 1
+            x = 1 / x
+            return x.mean()
+
+    net = BuiltinNet()
+    ins = [nd.random_normal(shape=(2, 10)) for i in range(8)]
+    check_gluon_net(net, ins, ins)
 
 if __name__ == '__main__':
     # test_fold_mlp()

@@ -26,9 +26,11 @@ import ctypes
 import random
 import sys
 from collections import namedtuple, defaultdict
+from numbers import Number
 
 from .. import ndarray
 from .. import symbol
+from . import _internal
 from . import op
 from ..base import check_call, _LIB, py_str, _get_op_name_prefix
 from ..ndarray import NDArray
@@ -40,6 +42,17 @@ from ..ndarray import NDArray
 # NOTE: future and inputs should be tuple
 _OpRecord = namedtuple('OpRecord', ['op_name', 'future', 'inputs', 'attrs'])
 OpSig = namedtuple('OpSig', ['op', 'fmt', 'batch_axis'])
+
+def _list_ops():
+    plist = ctypes.POINTER(ctypes.c_char_p)()
+    size = ctypes.c_uint()
+
+    check_call(_LIB.MXListAllOpNames(ctypes.byref(size),
+                                     ctypes.byref(plist)))
+    op_names = []
+    for i in range(size.value):
+        op_names.append(py_str(plist[i]))
+    return op_names
 
 
 class NDArrayFutureManager(object):
@@ -66,7 +79,7 @@ class NDArrayFuture(NDArray):
 
     def __init__(self):
         NDArray.__init__(self, None, True)
-        self.key = random.randint(0, sys.maxint)
+        self.key = random.randint(0, sys.maxsize)
         self.instantiated = False
         self.manager = get_future_manager()
 
@@ -94,8 +107,8 @@ class NDArrayFuture(NDArray):
             try:
                 arr = self.manager.look(self)
             except KeyError:
-                raise ValueError, "attribute '{0}' is not allowed for " \
-                    "uninstantiated ndarray future.".format(attr)
+                raise ValueError("attribute '{0}' is not allowed for " \
+                    "uninstantiated ndarray future.".format(attr))
             NDArray.__init__(self, arr.handle, True)
             self.instantiated = True
             return NDArray.__getattribute__(self, attr)
@@ -103,9 +116,192 @@ class NDArrayFuture(NDArray):
             return NDArray.__getattribute__(self, attr)
 
     def __add__(self, other):
-        """x.__add__(y) <=> x+y <=> mx.nd.add(x, y) """
-        print('NDArray Future add')
-        return op.broadcast_add(self, other)
+        """x.__add__(y) <=> x+y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_add` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Plus(self, other)
+        if isinstance(other, Number):
+            return _internal._PlusScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __radd__(self, other):
+        return self.__add__(other)
+
+    def __sub__(self, other):
+        """x.__sub__(y) <=> x-y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_sub` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Minus(self, other)
+        if isinstance(other, Number):
+            return _internal._MinusScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __rsub__(self, other):
+        """x.__rsub__(y) <=> y-x
+
+        Only `NDArray` is supported for now.
+        """
+        if isinstance(other, Number):
+            return _internal._RMinusScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __mul__(self, other):
+        """x.__mul__(y) <=> x*y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_mul` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Mul(self, other)
+        if isinstance(other, Number):
+            return _internal._MulScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __div__(self, other):
+        """x.__div__(y) <=> x/y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_div` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Div(self, other)
+        if isinstance(other, Number):
+            return _internal._DivScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __rdiv__(self, other):
+        """x.__rdiv__(y) <=> y/x
+
+        Only `NDArray` is supported for now.
+        """
+        if isinstance(other, Number):
+            return _internal._RDivScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __mod__(self, other):
+        """x.__mod__(y) <=> x%y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_mod` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Mod(self, other)
+        if isinstance(other, Number):
+            return _internal._ModScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __rmod__(self, other):
+        """x.__rmod__(y) <=> y%x
+
+        Only `NDArray` is supported for now.
+        """
+        if isinstance(other, Number):
+            return _internal._RModScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __truediv__(self, other):
+        return self.__div__(other)
+
+    def __rtruediv__(self, other):
+        return self.__rdiv__(other)
+
+    def __pow__(self, other):
+        """x.__pow__(y) <=> x**y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_pow` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._Power(self, other)
+        if isinstance(other, Number):
+            return _internal._PowerScalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __neg__(self):
+        """x.__neg__() <=> -x
+
+        Numerical negative, element-wise.
+        """
+        return self.__mul__(-1.0)
+
+    def __hash__(self):
+        return self.key
+
+    def __ne__(self, other):
+        """x.__ne__(y) <=> x!=y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_not_equal` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._not_equal(self, other)
+        if isinstance(other, numeric_types):
+            return _internal._not_equal_scalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __gt__(self, other):
+        """x.__gt__(y) <=> x>y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_greater` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._greater(self, other)
+        if isinstance(other, numeric_types):
+            return _internal._greater_scalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __ge__(self, other):
+        """x.__ge__(y) <=> x>=y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_greater_equal` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._greater_equal(self, other)
+        if isinstance(other, numeric_types):
+            return _internal._greater_equal_scalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __lt__(self, other):
+        """x.__lt__(y) <=> x<y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_lesser` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._lesser(self, other)
+        if isinstance(other, numeric_types):
+            return _internal._lesser_scalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+    def __le__(self, other):
+        """x.__le__(y) <=> x<=y
+
+        Scalar input is supported.
+        Broadcasting is not supported. Use `broadcast_lesser_equal` instead. """
+        if isinstance(other, (NDArrayFuture, NDArray)):
+            return _internal._lesser_equal(self, other)
+        if isinstance(other, numeric_types):
+            return _internal._lesser_equal_scalar(self, scalar=other)
+        else:
+            raise TypeError('type %s not supported' % str(type(other)))
+
+for op_name in _list_ops():
+    if hasattr(op, op_name):
+        setattr(NDArrayFuture, op_name, getattr(op, op_name))
 
 def create_ndarray_future(arr=None):
     future = NDArrayFuture()
@@ -152,6 +348,9 @@ def parse_name(name, mod_name=None):
     if len(prefix) > 0:
         func_name = name[len(prefix):]
         submodule_name = prefix[1:-1]
+    elif name.startswith('_'):
+        func_name = name
+        submodule_name = '_internal'
     else:
         func_name = name
         submodule_name = ''
@@ -330,7 +529,7 @@ class _BatchingScope(object):
 
     def __enter__(self):
         if _current_batching_scope() is not None:
-            raise ValueError, "nested batching scope is not allowed"
+            raise ValueError("nested batching scope is not allowed")
         _set_current_batching_scope(self)
 
     def __exit__(self, ptype, value, trace):
