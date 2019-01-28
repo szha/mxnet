@@ -43,7 +43,11 @@ struct ResourceRequest {
     /*! \brief A dynamic temp space that can be arbitrary size */
     kTempSpace,
     /*! \brief common::RandGenerator<xpu> object, which can be used in GPU kernel functions */
-    kParallelRandom
+    kParallelRandom,
+#if MXNET_USE_CUDNN == 1
+    /*! \brief pointer to cudnn dropout state, which can be used in cudnn kernel functions */
+    kCuDNNDropoutDesc
+#endif  // MXNET_USE_CUDNN == 1
   };
   /*! \brief type of resources */
   Type type;
@@ -104,6 +108,17 @@ struct Resource {
     CHECK_EQ(req.type, ResourceRequest::kParallelRandom);
     return static_cast<common::random::RandGenerator<xpu, DType>*>(ptr_);
   }
+
+#if MXNET_USE_CUDNN == 1
+  /*!
+   * \brief Get shared CuDNN Dropout Descriptor
+   * \return the parallel random number generator. for gpu, it is allocated on global memory.
+   */
+  inline common::random::RandGenerator<xpu, DType>* get_cudnn_dropout_desc(const float dropout) const {
+    CHECK_EQ(req.type, ResourceRequest::kCuDNNDropoutDesc);
+    return static_cast<common::random::RandGenerator<xpu, DType>*>(ptr_);
+  }
+#endif  // MXNET_USE_CUDNN == 1
 
   /*!
    * \brief Get space requested as mshadow Tensor.

@@ -110,7 +110,10 @@ class ResourceManagerImpl : public ResourceManager {
     gpu_rand_.Clear();
     gpu_space_.Clear();
     gpu_parallel_rand_.Clear();
-#endif
+#if MXNET_USE_CUDNN == 1
+    gpu_cudnn_dropout_state_.Clear();
+#endif  // MXNET_USE_CUDNN == 1
+#endif  // MXNET_USE_CUDA
     if (engine_ref_ != nullptr) {
       engine_ref_ = nullptr;
     }
@@ -147,6 +150,13 @@ class ResourceManagerImpl : public ResourceManager {
             return new ResourceParallelRandom<gpu>(ctx, gpu_native_rand_copy_, global_seed_);
           })->GetNext();
         }
+#if MXNET_USE_CUDNN == 1
+        case ResourceRequest::kCuDNNDropoutDesc: {
+          return gpu_cudnn_dropout_state_.Get(ctx.dev_id, [ctx, this]() {
+            return new ResourceCuDNNDropoutState(ctx, global_seed_);
+          })->GetNext();
+        }
+#endif  // MXNET_USE_CUDNN == 1
         default: LOG(FATAL) << "Unknown supported type " << req.type;
       }
 #else
@@ -355,6 +365,47 @@ class ResourceManagerImpl : public ResourceManager {
     }
   };
 
+  // CuDNN Dropout Descriptor Space.
+  struct ResourceCuDNNDropoutState {
+    /*! \brief the context of the device */
+    Context ctx;
+    /*! \brief resource representation */
+    Resource resource;
+    /*! \brief constructor */
+    explicit ResourceCuDNNDropoutState(Context ctx, size_t ncopy)
+        : ctx(ctx), resource(ncopy), curr_ptr(0) {
+      /* for (size_t i = 0; i < space.size(); ++i) { */
+      /*   resource[i].var = Engine::Get()->NewVariable(); */
+      /*   resource[i].id = static_cast<int32_t>(i); */
+      /*   resource[i].ptr_ = &space[i]; */
+      /*   resource[i].req = ResourceRequest(ResourceRequest::kTempSpace); */
+      /*   space[i].ctx = ctx; */
+      /*   CHECK_EQ(space[i].handle.size, 0U); */
+      /* } */
+    }
+    ~ResourceCuDNNDropoutState() {
+      /* for (size_t i = 0; i < space.size(); ++i) { */
+      /*   SpaceAllocator r = space[i]; */
+      /*   Engine::Get()->DeleteVariable( */
+      /*       [r](RunContext rctx){ */
+      /*         SpaceAllocator rcpy = r; */
+      /*         MSHADOW_CATCH_ERROR(rcpy.ReleaseAll()); */
+      /*       }, ctx, resource[i].var); */
+      /* } */
+    }
+    // get next resource in round roubin matter
+    inline Resource GetNext() {
+      /* const size_t kMaxDigit = std::numeric_limits<size_t>::max() / 2; */
+      /* size_t ptr = ++curr_ptr; */
+      /* // reset ptr to avoid undefined behavior during overflow */
+      /* // usually this won't happen */
+      /* if (ptr > kMaxDigit) { */
+      /*   curr_ptr.store((ptr + 1) % space.size()); */
+      /* } */
+      /* return resource[ptr % space.size()]; */
+    }
+  };
+
   /*! \brief number of copies in CPU temp space */
   int cpu_temp_space_copy_;
   /*! \brief number of copies in GPU temp space */
@@ -382,7 +433,11 @@ class ResourceManagerImpl : public ResourceManager {
   common::LazyAllocArray<ResourceTempSpace> gpu_space_;
   /*! \brief GPU parallel (on device) random number resources */
   common::LazyAllocArray<ResourceParallelRandom<gpu> > gpu_parallel_rand_;
-#endif
+#if MXNET_USE_CUDNN == 1
+  common::LazyAllocArray<ResourceCuDNNDropoutState> gpu_cudnn_dropout_state_;
+#endif  // MXNET_USE_CUDNN == 1
+
+#endif  // MXNET_USE_CUDA
 };
 }  // namespace resource
 
