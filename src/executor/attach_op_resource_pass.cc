@@ -64,20 +64,29 @@ void AttachOpResources(
                              : fresource[op](inode.source->attrs);
       // Get the resource of temporal space.
       for (const ResourceRequest& req : reqs) {
-        if (req.type == ResourceRequest::kTempSpace) {
-          if (cached_temp.count(ctx) != 0) {
-            requested.push_back(cached_temp.at(ctx));
-          } else {
-            Resource r = ResourceManager::Get()->Request(ctx, req);
-            requested.push_back(r);
-            cached_temp[ctx] = r;
-          }
-        } else if (req.type == ResourceRequest::kRandom) {
-          requested.push_back(ResourceManager::Get()->Request(ctx, req));
-        } else if (req.type == ResourceRequest::kParallelRandom) {
-          requested.push_back(ResourceManager::Get()->Request(ctx, req));
-        } else {
-          LOG(FATAL) << "resource type not yet supported";
+        switch (req.type) {
+          case ResourceRequest::kTempSpace:
+            if (cached_temp.count(ctx) != 0) {
+              requested.push_back(cached_temp.at(ctx));
+            } else {
+              Resource r = ResourceManager::Get()->Request(ctx, req);
+              requested.push_back(r);
+              cached_temp[ctx] = r;
+            }
+            break;
+          case ResourceRequest::kRandom:
+            requested.push_back(ResourceManager::Get()->Request(ctx, req));
+            break;
+          case ResourceRequest::kParallelRandom:
+            requested.push_back(ResourceManager::Get()->Request(ctx, req));
+            break;
+#if MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+          case ResourceRequest::kCuDNNDropoutDesc:
+            requested.push_back(ResourceManager::Get()->Request(ctx, req));
+            break;
+#endif  // MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 7
+          default:
+            LOG(FATAL) << "resource type " << req.type << " is not yet supported";
         }
       }
       CHECK(vdispatch[nid] != DispatchMode::kUndefined);
