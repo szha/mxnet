@@ -308,16 +308,16 @@ struct SoftmaxParam : public dmlc::Parameter<SoftmaxParam> {
   }
 };
 
-inline bool SoftmaxOpType(const nnvm::NodeAttrs& attrs,
-                          std::vector<int>* in_attrs,
-                          std::vector<int>* out_attrs) {
+static inline bool SoftmaxOpType(const nnvm::NodeAttrs& attrs,
+                                 std::vector<int>* in_attrs,
+                                 std::vector<int>* out_attrs) {
   CHECK_EQ(in_attrs->size(), 1);
   CHECK_EQ(out_attrs->size(), 1);
   const SoftmaxParam& param = nnvm::get<SoftmaxParam>(attrs.parsed);
 
-  int arg_dtype = param.dtype.has_value()?param.dtype.value():-1,
-      in_dtype = (*in_attrs)[0],
-      out_dtype = (*out_attrs)[0];
+  int arg_dtype = param.dtype.has_value() ? param.dtype.value() : -1;
+  int in_dtype = (*in_attrs)[0];
+  int out_dtype = (*out_attrs)[0];
 
   if (out_dtype != -1 && in_dtype != -1) {
     TYPE_ASSIGN_CHECK(*out_attrs, 0, arg_dtype);
@@ -342,19 +342,52 @@ inline bool SoftmaxOpType(const nnvm::NodeAttrs& attrs,
   }
 }
 
-inline bool SoftmaxGradOpType(const nnvm::NodeAttrs& attrs,
-                              std::vector<int>* in_attrs,
-                              std::vector<int>* out_attrs) {
-  CHECK_EQ(in_attrs->size(), 3);
-  CHECK_EQ(out_attrs->size(), 1);
+static inline bool SoftmaxGradOpShape(const nnvm::NodeAttrs& attrs,
+                                      std::vector<TShape> *in_attrs,
+                                      std::vector<TShape> *out_attrs) {
+  const SoftmaxParam& param = nnvm::get<SoftmaxParam>(attrs.parsed);
 
-  int in_dtype = (*in_attrs)[1],
-      out_dtype = (*in_attrs)[2];
-  TYPE_ASSIGN_CHECK(*in_attrs, 0, out_dtype);
-  TYPE_ASSIGN_CHECK(*out_attrs, 0, in_dtype);
-
-  return (*out_attrs)[0] != -1 && (*in_attrs)[0] != -1;
+  if (param.dtype.has_value() && param.dtype.value() != -1) {
+    return ElemwiseShape<3, 1>(attrs, in_attrs, out_attrs);
+  } else {
+    return ElemwiseShape<2, 1>(attrs, in_attrs, out_attrs);
+  }
 }
+
+static inline bool SoftmaxGradOpType(const nnvm::NodeAttrs& attrs,
+                                     std::vector<int>* in_attrs,
+                                     std::vector<int>* out_attrs) {
+  const SoftmaxParam& param = nnvm::get<SoftmaxParam>(attrs.parsed);
+
+  if (param.dtype.has_value() && param.dtype.value() != -1) {
+    int in_dtype = (*in_attrs)[1];
+    int out_dtype = (*in_attrs)[2];
+    TYPE_ASSIGN_CHECK(*in_attrs, 0, out_dtype);
+    TYPE_ASSIGN_CHECK(*out_attrs, 0, in_dtype);
+
+    return (*out_attrs)[0] != -1 && (*in_attrs)[0] != -1;
+  } else {
+    int out_dtype = (*in_attrs)[1];
+    TYPE_ASSIGN_CHECK(*out_attrs, 0, out_dtype);
+    TYPE_ASSIGN_CHECK(*in_attrs, 0, out_dtype);
+
+    return (*out_attrs)[0] != -1 && (*in_attrs)[0] != -1;
+  }
+}
+
+struct SoftmaxFGradient {
+  const char *op_name;
+  std::vector<nnvm::NodeEntry> operator()(const nnvm::NodePtr& n,
+                                          const std::vector<nnvm::NodeEntry>& ograds) const {
+    const SoftmaxParam& param = nnvm::get<SoftmaxParam>(n->attrs.parsed);
+    bool has_dtype_override = param.dtype.has_value() && param.dtype.value() != -1;
+    if (has_dtype_override) {
+      return ElemwiseGradUseInOut{op_name}(n, ograds);
+    } else {
+      return ElemwiseGradUseOut{op_name}(n, ograds);
+    }
+  }
+};
 
 template<typename xpu, typename OP, bool negate = false>
 void SoftmaxCompute(const nnvm::NodeAttrs& attrs,
@@ -401,17 +434,21 @@ void SoftmaxGradCompute(const nnvm::NodeAttrs& attrs,
   const double temperature = param.temperature.has_value() ?
     param.temperature.value() : 1.0;
   TShape shape = AxisShapeCompact(inputs[0].shape_, &axis, true);
-  MXNET_REAL_ACC_TYPE_SWITCH(inputs[2].type_flag_, OType, AType, {
+
+  bool has_dtype_override = param.dtype.has_value() && param.dtype.value() != -1;
+  int out_idx = has_dtype_override ? 2 : 1;
+
+  MXNET_REAL_ACC_TYPE_SWITCH(inputs[0].type_flag_, OType, AType, {
     MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
         if (shape.ndim() == 2) {
           SoftmaxGrad<OP1, OP2, Req, negate, AType>(
-              ctx.get_stream<xpu>(), inputs[2].dptr<OType>(),
+              ctx.get_stream<xpu>(), inputs[out_idx].dptr<OType>(),
               inputs[0].dptr<OType>(), outputs[0].dptr<DType>(),
               shape.get<2>(), axis, static_cast<DType>(temperature));
         } else {
           SoftmaxGrad<OP1, OP2, Req, negate, AType>(
-              ctx.get_stream<xpu>(), inputs[2].dptr<OType>(),
+              ctx.get_stream<xpu>(), inputs[out_idx].dptr<OType>(),
               inputs[0].dptr<OType>(), outputs[0].dptr<DType>(),
               shape.get<3>(), axis, static_cast<DType>(temperature));
         }
